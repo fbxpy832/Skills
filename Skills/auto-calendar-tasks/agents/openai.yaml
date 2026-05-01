@@ -1,0 +1,4 @@
+interface:
+  display_name: "Auto Calendar Tasks"
+  short_description: "Create Apple or Lark calendar events and tasks with reminders."
+  default_prompt: "Add a calendar event or todo with the right reminder defaults."
