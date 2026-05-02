@@ -29,10 +29,46 @@ if [ "$MODEL" = "codex-review" ]; then
   exit 0
 fi
 
-if ! command -v opencode >/dev/null 2>&1; then
+OPENCODE_BIN="${OPENCODE_BIN:-}"
+if [ -z "$OPENCODE_BIN" ]; then
+  if command -v opencode >/dev/null 2>&1; then
+    OPENCODE_BIN="$(command -v opencode)"
+  elif [ -x "/opt/homebrew/bin/opencode" ]; then
+    OPENCODE_BIN="/opt/homebrew/bin/opencode"
+  elif [ -x "$HOME/.opencode/bin/opencode" ]; then
+    OPENCODE_BIN="$HOME/.opencode/bin/opencode"
+  else
+    OPENCODE_BIN=""
+  fi
+fi
+
+if [ -z "$OPENCODE_BIN" ] || [ ! -x "$OPENCODE_BIN" ]; then
   echo "ERROR: opencode CLI not found. Please install and login to OpenCode first."
   exit 1
 fi
+
+export HOME="${HOME:-/Users/xpy}"
+export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
+
+mkdir -p "$XDG_DATA_HOME/opencode" "$XDG_STATE_HOME/opencode"
+
+if [ ! -w "$XDG_DATA_HOME/opencode" ]; then
+  echo "ERROR: OpenCode data directory is not writable: $XDG_DATA_HOME/opencode"
+  echo "Do not use sudo from this script. Grant Codex write permission or fix ownership manually."
+  exit 1
+fi
+
+if [ ! -w "$XDG_STATE_HOME/opencode" ]; then
+  echo "ERROR: OpenCode state directory is not writable: $XDG_STATE_HOME/opencode"
+  echo "Do not use sudo from this script. Grant Codex write permission or fix ownership manually."
+  exit 1
+fi
+
+export HTTP_PROXY="${HTTP_PROXY:-http://127.0.0.1:7890}"
+export HTTPS_PROXY="${HTTPS_PROXY:-http://127.0.0.1:7890}"
+export ALL_PROXY="${ALL_PROXY:-socks5://127.0.0.1:7890}"
+export NO_PROXY="${NO_PROXY:-localhost,127.0.0.1,::1}"
 
 cd "$PROJECT_DIR"
 
@@ -42,6 +78,9 @@ echo "Stage: $STAGE"
 echo "Task type: $TASK_TYPE"
 echo "Selected model: $MODEL"
 echo "Project directory: $PROJECT_DIR"
+echo "OpenCode binary: $OPENCODE_BIN"
+echo "OpenCode data dir: $XDG_DATA_HOME/opencode"
+echo "OpenCode state dir: $XDG_STATE_HOME/opencode"
 echo ""
 
-opencode run --model "$MODEL" "$(cat "$PROMPT_FILE")"
+"$OPENCODE_BIN" run --model "$MODEL" "$(cat "$PROMPT_FILE")"

@@ -13,6 +13,34 @@ Codex must not directly change global model provider settings. Codex must not mo
 
 This skill must only call OpenCode CLI through local scripts.
 
+## Codex App Runtime Stability
+
+When Codex calls OpenCode from inside the Codex App sandbox, OpenCode may fail even if it works in the user's normal terminal. Do not assume OpenCode is broken. First check the Codex runtime environment.
+
+Before delegating, the local script should:
+
+1. Resolve the OpenCode binary with `command -v opencode`.
+2. If that fails, try `/opt/homebrew/bin/opencode`.
+3. If that fails, try `$HOME/.opencode/bin/opencode`.
+4. Use the resolved absolute path for all OpenCode calls.
+5. Preserve `HOME=/Users/xpy` when that is the active user home.
+6. Set `XDG_DATA_HOME=$HOME/.local/share` and `XDG_STATE_HOME=$HOME/.local/state` unless already provided.
+7. Ensure `$XDG_DATA_HOME/opencode` and `$XDG_STATE_HOME/opencode` exist and are writable.
+8. If they are not writable, report the issue and do not use `sudo`.
+9. If proxy variables are absent and network calls fail, retry only with temporary per-process proxy variables:
+   - `HTTP_PROXY=http://127.0.0.1:7890`
+   - `HTTPS_PROXY=http://127.0.0.1:7890`
+   - `ALL_PROXY=socks5://127.0.0.1:7890`
+   - `NO_PROXY=localhost,127.0.0.1,::1`
+
+Never fix OpenCode runtime failures by changing provider configuration, API keys, shell profile files, global proxy settings, or Codex configuration. The stable pattern is: absolute OpenCode path + per-process `HOME`/`XDG_*`/proxy variables + explicit filesystem permissions for OpenCode's data and state directories.
+
+Common failure interpretation:
+
+- `PRAGMA wal_checkpoint(PASSIVE)` or `readonly database`: Codex likely lacks write permission to `$XDG_DATA_HOME/opencode` or `$XDG_STATE_HOME/opencode`.
+- `ProviderModelNotFoundError` after changing `XDG_DATA_HOME`: the temporary data directory probably lacks the user's normal auth/provider state. Use the real user data directory instead.
+- `FailedToOpenSocket` or `ConnectionRefused` to `opencode.ai`: check Codex network permission and per-process proxy variables before judging the model or provider.
+
 ## Trigger Policy
 
 This skill uses a semi-automatic trigger policy.
