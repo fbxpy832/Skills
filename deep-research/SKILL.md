@@ -687,4 +687,4 @@ description: 深度研究参谋技能——面向企业经营、技术研发和�
 ## 输出路径
 
 已生成的报告统一保存至：
-`~/Documents/RichardHub/RichardHub/收件箱/YYYY-MM-DD-<课题名>.md`
+`~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian/RichardHub/收件箱/YYYY-MM-DD-<课题名>.md`
