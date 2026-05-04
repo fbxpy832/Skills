@@ -172,13 +172,13 @@ source_plan 可作为内部过程，不强制写入报告正文。但最终交�
 需要从 OpenCode 直接运行 Deep Research 时，使用：
 
 ```bash
-Skills/deep-research/scripts/opencode-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR]
+Skills/opencode-deep-research/scripts/opencode-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR]
 ```
 
 示例：
 
 ```bash
-Skills/deep-research/scripts/opencode-research-runner.sh high_quality /tmp/research-task.md /tmp/deep-research-run /Users/xpy/Documents/RichardHub/Git
+Skills/opencode-deep-research/scripts/opencode-research-runner.sh high_quality /tmp/research-task.md /tmp/opencode-deep-research-run /Users/xpy/Documents/RichardHub/Git
 ```
 
 该 runner 会按 `mode + agent` 调用 `scripts/model-router.sh`，默认采用分阶段并发：planner 先跑，source 与 long_context 并发，analyst 与 scenario 并发，writer 汇总，reviewer 最后审计。受限环境可用 `--sequential` 回退。详见 [references/opencode-runner.md](references/opencode-runner.md)。

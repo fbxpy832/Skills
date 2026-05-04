@@ -77,10 +77,21 @@ if [ "$DRY_RUN" != "1" ]; then
   fi
 fi
 
-export HTTP_PROXY="${HTTP_PROXY:-http://127.0.0.1:7890}"
-export HTTPS_PROXY="${HTTPS_PROXY:-http://127.0.0.1:7890}"
-export ALL_PROXY="${ALL_PROXY:-socks5://127.0.0.1:7890}"
-export NO_PROXY="${NO_PROXY:-localhost,127.0.0.1,::1}"
+# Proxy setup — only set if already in environment or port 7890 is reachable
+if [ -n "$HTTP_PROXY" ] || [ -n "$HTTPS_PROXY" ]; then
+  # Already set by environment, don't override
+  :
+elif (command -v nc && nc -z -w 1 127.0.0.1 7890 2>/dev/null) || \
+     (command -v curl && curl -sI --connect-timeout 2 -x http://127.0.0.1:7890 http://www.baidu.com >/dev/null 2>&1); then
+  export HTTP_PROXY="http://127.0.0.1:7890"
+  export HTTPS_PROXY="http://127.0.0.1:7890"
+  export ALL_PROXY="socks5://127.0.0.1:7890"
+  export NO_PROXY="localhost,127.0.0.1,::1"
+  echo "[proxy] Local proxy detected at 127.0.0.1:7890, proxy enabled"
+else
+  echo "[proxy] No local proxy detected, running without proxy"
+  unset HTTP_PROXY HTTPS_PROXY ALL_PROXY
+fi
 
 DEFAULT_AGENTS="planner_agent,source_agent,long_context_agent,analyst_agent,scenario_agent,writer_agent,reviewer_agent"
 AGENT_LIST="${DEEP_RESEARCH_AGENTS:-$DEFAULT_AGENTS}"
@@ -208,11 +219,13 @@ $task_text
 Required skill files to follow:
 
 - $SKILL_DIR/SKILL.md
+- $SKILL_DIR/source-policy.yaml
 - $SKILL_DIR/model-routing.yaml
 - $SKILL_DIR/references/workflow.md
 - $SKILL_DIR/references/task-classification.md
 - $SKILL_DIR/references/subagents.md
 - $SKILL_DIR/references/source-audit.md
+- $SKILL_DIR/references/source-boundaries.md
 - $SKILL_DIR/references/source-failure-log.md
 - $SKILL_DIR/references/quality-review.md
 - $SKILL_DIR/references/execution-consistency.md
