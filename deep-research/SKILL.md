@@ -27,7 +27,9 @@ Deep Research 是一套“研究决策型”工作流，不只是资料汇总。
 - 任务分类与研究框架：读 [references/task-classification.md](references/task-classification.md)。
 - Subagent 职责和输出契约：读 [references/subagents.md](references/subagents.md)。
 - 来源分级和审计：读 [references/source-audit.md](references/source-audit.md)。
+- 来源失败日志：读 [references/source-failure-log.md](references/source-failure-log.md)。
 - 最终质量审计：读 [references/quality-review.md](references/quality-review.md)。
+- 实际执行一致性检查：读 [references/execution-consistency.md](references/execution-consistency.md)。
 - 输出文件与交付汇报：读 [references/output-rules.md](references/output-rules.md)。
 - 用户业务上下文适配：涉及郑好停、阿顺数智、智慧停车、国企、城市治理、停车业务时读 [references/user-context.md](references/user-context.md)。
 - 报告模板：按任务类型读取 `templates/` 下对应模板。
@@ -54,13 +56,16 @@ Deep Research 是一套“研究决策型”工作流，不只是资料汇总。
 4. 确定 Subagent：
    - 默认启用 `planner_agent`、`analyst_agent`、`writer_agent`、`reviewer_agent`。
    - 涉及公开事实或最新资料时启用 `source_agent`。
+   - 技术路线研究类任务必须启用 `source_agent`；即使搜索失败，也必须输出来源缺口和建议检索库/关键词。
    - 涉及长文档或已有材料时启用 `long_context_agent`。
    - 涉及市场规模、收入、利润、用户数、回收期、估值、成本节约、效率提升时启用 `scenario_agent`。
 5. 如真实 Subagent 或多模型调用不可用，退化为主 Agent 顺序模拟，并在交付说明中写明。
 
 ## Model Routing Rules
 
-模型路由以 [model-routing.yaml](model-routing.yaml) 为准。关键底线：
+模型路由以 [model-routing.yaml](model-routing.yaml) 为准，但默认只是“指令级路由建议”。只有 runner 或 OpenCode 命令输出能验证 `--model <model_id>` 调用成功时，才可写“已请求/已切换到该模型”；只有 OpenCode 状态栏、日志或命令输出能检测真实模型时，才可写“实际使用该模型”。无法检测时必须写“模型使用未能自动验证”。
+
+关键底线：
 
 - DeepSeek V4 Pro：复杂推理、经营决策、合规资金税务、技术路线、投资分析、最终报告、质量审计。
 - DeepSeek V4 Flash：资料初筛、搜索结果整理、低成本批量搜索、初稿骨架、通用解释。
@@ -169,14 +174,20 @@ Skills/deep-research/scripts/opencode-research-runner.sh high_quality /tmp/resea
 3. 自动选择的运行模式。
 4. 使用的研究框架。
 5. 启用的 Subagent。
-6. 每个 Subagent 使用的模型。
-7. 是否触发模型升级。
-8. 是否触发 fallback。
-9. 主要结论。
-10. 主要修改/优化点。
-11. 仍缺哪些真实数据。
-12. 是否建议进入下一步。
-13. 是否需要人工复核的高风险部分。
+6. 每个 Subagent 的请求模型；无法验证真实模型时写“模型使用未能自动验证”。
+7. 真实模型检测状态。
+8. 模型路由执行状态：真实切换 / 指令级建议 / 无法验证。
+9. 搜索状态：成功 / 部分成功 / 失败。
+10. 审计等级：PASS / CONDITIONAL_PASS / FAIL。
+11. 报告可用性：正式版 / 内部初稿 / 离线初稿 / 仅供参考。
+12. 是否触发模型升级。
+13. 是否触发 fallback。
+14. 主要结论。
+15. 主要修改/优化点。
+16. 仍缺哪些真实数据。
+17. 必须补充核验的来源。
+18. 是否建议进入下一步。
+19. 是否需要人工复核的高风险部分。
 
 ## Backward Compatibility
 
