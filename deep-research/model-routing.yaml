@@ -1,0 +1,180 @@
+available_models:
+  deepseek_v4_pro:
+    model_id: opencode-go/deepseek-v4-pro
+    role: reasoning_and_final_analysis
+    strengths:
+      - complex_reasoning
+      - business_decision
+      - compliance_analysis
+      - final_review
+      - technical_route_selection
+      - investment_analysis
+      - final_report_writing
+    cost_level: medium_high
+
+  deepseek_v4_flash:
+    model_id: opencode-go/deepseek-v4-flash
+    role: fast_search_and_draft
+    strengths:
+      - fast_drafting
+      - source_collection
+      - low_cost_iteration
+      - rough_outline
+      - search_result整理
+    cost_level: low
+
+  kimi_2_6:
+    model_id: opencode-go/kimi-k2.6
+    role: long_context_reading
+    strengths:
+      - long_document_reading
+      - multi_file_summarization
+      - policy_document_extraction
+      - contract_and_tender_reading
+      - financial_report_extraction
+      - technical_document_extraction
+    cost_level: medium
+
+default_mode: balanced
+
+mode_profiles:
+  balanced:
+    planner_agent: deepseek_v4_pro
+    source_agent: deepseek_v4_flash
+    long_context_agent: kimi_2_6
+    analyst_agent: deepseek_v4_pro
+    scenario_agent: deepseek_v4_pro
+    writer_agent: deepseek_v4_pro
+    reviewer_agent: deepseek_v4_pro
+
+  cost_saving:
+    planner_agent: deepseek_v4_flash
+    source_agent: deepseek_v4_flash
+    long_context_agent: kimi_2_6
+    analyst_agent: deepseek_v4_flash
+    scenario_agent: deepseek_v4_flash
+    writer_agent: deepseek_v4_flash
+    reviewer_agent: deepseek_v4_pro
+    notes:
+      - analyst_agent must escalate complex paragraphs to deepseek_v4_pro.
+      - final review must still use deepseek_v4_pro.
+
+  high_quality:
+    planner_agent: deepseek_v4_pro
+    source_agent: deepseek_v4_flash
+    long_context_agent: kimi_2_6
+    analyst_agent: deepseek_v4_pro
+    scenario_agent: deepseek_v4_pro
+    writer_agent: deepseek_v4_pro
+    reviewer_agent: deepseek_v4_pro
+
+  long_context:
+    planner_agent: deepseek_v4_pro
+    source_agent: deepseek_v4_flash
+    long_context_agent: kimi_2_6
+    analyst_agent: deepseek_v4_pro
+    scenario_agent: deepseek_v4_pro
+    writer_agent: deepseek_v4_pro
+    reviewer_agent: deepseek_v4_pro
+
+  draft_fast:
+    planner_agent: deepseek_v4_flash
+    source_agent: deepseek_v4_flash
+    long_context_agent: kimi_2_6
+    analyst_agent: deepseek_v4_flash
+    scenario_agent: deepseek_v4_flash
+    writer_agent: deepseek_v4_flash
+    reviewer_agent: deepseek_v4_pro
+    notes:
+      - Use only when the user wants a fast draft or rough framework.
+      - Mark lower source strictness if the user does not require formal citation.
+
+force_high_quality_keywords:
+  - 高质量
+  - 认真做
+  - 认真分析
+  - 用于汇报
+  - 用于决策
+  - 给领导看
+
+mode_keywords:
+  high_quality:
+    - 立项
+    - 决策
+    - 董事会
+    - 总经理办公会
+    - 政府汇报
+    - 国企
+    - 合规
+    - 经营分析
+    - 商业模式
+    - 投资分析
+    - 技术路线
+    - 架构选型
+    - 深度研究
+    - 对标分析
+    - 风险评估
+    - 给领导看
+    - 用于汇报
+    - 认真分析
+  long_context:
+    - 基于这个文件
+    - 读取报告
+    - 优化现有报告
+    - 审校
+    - 重写
+    - 总结这个文档
+    - 多份材料
+    - 附件
+    - uploaded file
+    - 根据已有报告
+  cost_saving:
+    - 简单整理
+    - 快速看一下
+    - 初步分析
+    - 不用太详细
+    - 先给个框架
+    - 省成本
+    - 先粗略
+  draft_fast:
+    - 快速初稿
+    - 先出一版
+    - 后续人工修改
+
+escalation_rules:
+  must_use_deepseek_v4_pro:
+    - compliance_or_law
+    - funds_payment_tax_or_second_clearing
+    - company_project_approval_or_budget
+    - investment_decision
+    - financial_modeling_or_valuation
+    - revenue_forecast
+    - final_conclusion
+    - quality_review
+    - flash_uncertainty_or_logic_gap
+    - user_requests_serious_or_leadership_use
+
+fallback_rules:
+  kimi_2_6_unavailable:
+    action: use_deepseek_v4_pro_for_long_context
+  deepseek_v4_pro_unavailable:
+    action: use_kimi_2_6_or_deepseek_v4_flash_for_draft_only
+    required_notice: 本次未使用 Pro 级审计模型，结论需人工复核。
+  deepseek_v4_flash_unavailable:
+    action: use_deepseek_v4_pro_for_source_and_draft
+    required_notice: 资料搜索和初稿生成改用 Pro 模型，成本可能上升。
+  subagents_unavailable:
+    action: sequential_single_agent_workflow
+    required_notice: 本次未启用 Subagent 分工，采用单 Agent 模式完成。
+
+output_contracts:
+  must_report:
+    - task_type
+    - running_mode
+    - research_framework
+    - enabled_subagents
+    - model_mapping
+    - escalation_triggered
+    - fallback_triggered
+    - source_audit_status
+    - quality_review_status
