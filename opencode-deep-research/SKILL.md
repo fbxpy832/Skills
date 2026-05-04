@@ -21,13 +21,15 @@ Deep Research 是一套“研究决策型”工作流，不只是资料汇总。
 
 只加载当前任务需要的文件：
 
+- 来源策略与配置：读 [source-policy.yaml](source-policy.yaml)。
+- 来源类型与边界：读 [references/source-boundaries.md](references/source-boundaries.md)。
+- 来源分级和审计：读 [references/source-audit.md](references/source-audit.md)。
+- 来源失败日志：读 [references/source-failure-log.md](references/source-failure-log.md)。
 - 模型路由与模式：读 [model-routing.yaml](model-routing.yaml)。
 - OpenCode 直接调用：读 [references/opencode-runner.md](references/opencode-runner.md)，使用 `scripts/opencode-research-runner.sh`。
 - 完整阶段流程：读 [references/workflow.md](references/workflow.md)。
 - 任务分类与研究框架：读 [references/task-classification.md](references/task-classification.md)。
 - Subagent 职责和输出契约：读 [references/subagents.md](references/subagents.md)。
-- 来源分级和审计：读 [references/source-audit.md](references/source-audit.md)。
-- 来源失败日志：读 [references/source-failure-log.md](references/source-failure-log.md)。
 - 最终质量审计：读 [references/quality-review.md](references/quality-review.md)。
 - 实际执行一致性检查：读 [references/execution-consistency.md](references/execution-consistency.md)。
 - 输出文件与交付汇报：读 [references/output-rules.md](references/output-rules.md)。
@@ -60,6 +62,85 @@ Deep Research 是一套“研究决策型”工作流，不只是资料汇总。
    - 涉及长文档或已有材料时启用 `long_context_agent`。
    - 涉及市场规模、收入、利润、用户数、回收期、估值、成本节约、效率提升时启用 `scenario_agent`。
 5. 如真实 Subagent 或多模型调用不可用，退化为主 Agent 顺序模拟，并在交付说明中写明。
+
+## Phase 0.5 Source Planning（来源规划）
+
+Phase 0 完成后、Phase 1 开始前，必须先形成内部 `source_plan`，明确本次研究需要哪些数据来源、各自适用边界以及失败降级策略。
+
+### 来源类型定义
+
+| 来源类型 | 定义 | 允许支撑核心结论 | 默认等级 |
+|---------|------|:---:|:---:|
+| **external_authoritative** | 政府官网、监管机构、交易所公告、上市公司公告、法规原文、标准、统计年鉴、招股书/年报/季报、学术论文、权威会议论文、行业协会报告、公开招投标 | ✓ | S/A |
+| **external_media** | 主流财经媒体、行业媒体、券商研报、咨询机构报告、企业新闻稿、产品官网、技术博客、会议材料 | 需交叉验证 | B/C |
+| **local_vault** | 本地 Obsidian Vault / RichardHub：公司历史报告、项目方案、用户笔记、会议纪要、业务材料 | 条件允许（标注"内部口径，需核验"） | 内部口径 |
+| **local_wiki** | 本地 llm-wiki / karpathy wiki：AI/LLM/Agent 等技术原理知识库 | 条件允许（不用于最新事实） | 技术参考 |
+| **uploaded_files** | 当前上传的 Markdown/PDF/Word/Excel/图片等 | 条件允许（区分"文件内声称"与"已核验事实"） | 当前上下文 |
+| **model_reasoning** | AI 推理判断 | ✗ 不得写成事实 | D |
+
+详见 [references/source-boundaries.md](references/source-boundaries.md)。
+
+### 来源等级
+
+| 等级 | 定义 | 支撑能力 |
+|:---:|------|------|
+| **S** | 政府官网、监管机构、法规原文、交易所公告、年报/招股书、权威论文 | 支撑核心结论 |
+| **A** | 行业协会报告、咨询机构、券商研报、企业官网正式页、招投标、专利 | 支撑重要结论 |
+| **B** | 主流财经媒体、行业媒体、企业新闻稿、会议演讲、技术博客 | 辅助论据，需交叉验证 |
+| **C** | 自媒体、知乎、博客、论坛、未经核验传闻 | 仅观点参考 |
+| **D** | AI 知识、经验估算、无出处数据、二手转述 | 仅假设，不写成事实 |
+
+### 任务类型 × 数据源优先级
+
+| 任务类型 | 优先来源（按顺序） | 特殊约束 |
+|---------|------------------|---------|
+| **business_decision** | uploaded_files → local_vault → external_authoritative → external_media → model_reasoning | 必须区分内部口径/外部事实/AI 推理/待核验数据 |
+| **government_report** | external_authoritative → local_vault → uploaded_files → external_media → model_reasoning | 禁止用自媒体支撑核心结论；禁止营销话术 |
+| **technical_route** | local_wiki(仅原理) → external_authoritative → external_media → uploaded_files → local_vault → model_reasoning | local_wiki 不用于最新事实，必须外部核验最新论文和产品进展 |
+| **investment_analysis** | external_authoritative → external_media → uploaded_files → local_vault → model_reasoning | 禁止用论坛/自媒体作核心依据；禁止绝对化投资结论 |
+| **general_research** | external_authoritative → local_wiki → external_media → model_reasoning | 概念可引用 local_wiki，最新状态需外部核验 |
+
+### Source Plan 最小输出
+
+每次研究必须在内部形成 source_plan.ymllike 判断：
+
+- `task_type`
+- `required_sources`: 必须使用的来源
+- `optional_sources`: 可选来源
+- `forbidden_or_weak_sources`: 不应作为核心依据的来源
+- `source_risk`: 来源风险点
+- `verification_needs`: 需交叉核验的内容
+- `freshness_requirement`: 是否需求最新信息
+- `local_source_need`: 是否需要检索 Vault/Wiki
+- `uploaded_file_need`: 是否需优先读取上传文件
+- `fallback_policy`: 来源失败时的降级策略
+
+source_plan 可作为内部过程，不强制写入报告正文。但最终交付摘要应简要说明"主要数据来源"。
+
+### 来源使用红线
+
+1. **核心结论**必须尽量由 S/A/B 级来源支撑。
+2. **C 级来源**只能用于启发、补充、线索，不得单独支撑核心判断。
+3. **D 级来源**只能作为假设或待核验项，不得写成事实。
+4. 涉及**政策、法律、监管、资金、财务、上市公司、投资判断**，必须优先 S/A 级来源。
+5. **不得把本地 Vault 笔记当作外部权威事实**。
+6. **不得把本地 Wiki 当作最新产业事实**。
+7. **不得把 AI 模型推理写成事实**。
+8. 无可靠来源时不得虚构，应写"缺少可靠公开来源，需进一步核验"。
+9. 关键事实尽量有 2+ 独立来源交叉验证。
+
+### 外部搜索失败降级
+
+当外部搜索失败、API 超时、网页无法访问或来源不足时：
+
+1. 必须记录 `source_failure_log`（见 [references/source-failure-log.md](references/source-failure-log.md)）。
+2. `high_quality` 模式不得标记为"正式高质量报告"。
+3. 报告自动降级为 **离线初稿** 或 **待联网核验版**。
+4. 文件名加后缀 `-离线初稿`。
+5. 报告开头写："本报告因外部搜索/来源抓取失败，部分内容基于本地资料或模型知识生成，关键结论需联网核验后方可用于正式决策。"
+6. 审计等级最高为 `CONDITIONAL_PASS`。
+
+详见 [references/source-failure-log.md](references/source-failure-log.md) 和 [references/source-boundaries.md](references/source-boundaries.md)。
 
 ## Model Routing Rules
 
@@ -104,17 +185,15 @@ Skills/deep-research/scripts/opencode-research-runner.sh high_quality /tmp/resea
 
 ## Source And Data Rules
 
-凡涉及政策、市场数据、公司动态、价格、投融资、财务、论文、开源活跃度、新闻和最新进展，必须检索或读取可靠来源并标注来源等级。
+来源体系的核心配置见 [source-policy.yaml](source-policy.yaml)，边界定义见 [references/source-boundaries.md](references/source-boundaries.md)。审计规则见 [references/source-audit.md](references/source-audit.md)。
 
-来源等级简表：
+**速查摘要**：
 
-- S：政府官网、监管机构、交易所/上市公司公告、法规原文、统计年鉴、标准、招股书/年报/季报、权威论文。
-- A：主流财经媒体、行业协会、券商研报、咨询机构、专利/标准数据库、公开招投标。
-- B：企业新闻稿、地方媒体、行业媒体、产品官网、会议材料。
-- C：自媒体、博客、论坛、未经核验观点。
-- D：经验估算、AI 推理、用户未核验口径、无法确认来源的数据。
-
-关键事实尽量使用 S/A/B 来源。C/D 只能做参考，不得支撑核心结论。缺少可靠来源时必须写：“缺少可靠公开数据，需进一步核验。”
+- 每次研究前必须形成内部 `source_plan`（任务类型 → 来源优先级 → 降级策略）。
+- 来源分 **6 类**：external_authoritative / external_media / local_vault / local_wiki / uploaded_files / model_reasoning。
+- 来源分 **5 级**：S（最高）→ A（高）→ B（中）→ C（低）→ D（不可作为事实）。
+- **核心结论**必须由 S/A/B 级来源支撑。C 级只能补充。D 级只能作假设。
+- 外部搜索失败时自动降级为"离线初稿"，不得标为"正式高质量报告"。缺少可靠来源时必须写：“缺少可靠公开数据，需进一步核验。”
 
 ## Scenario Rules
 
@@ -167,7 +246,7 @@ Skills/deep-research/scripts/opencode-research-runner.sh high_quality /tmp/resea
 
 ## Final Delivery Summary
 
-完成后不能只说“完成了”。必须汇报：
+完成后不能说“完成了”。必须汇报：
 
 1. 输出文件路径。
 2. 报告类型。
@@ -178,16 +257,19 @@ Skills/deep-research/scripts/opencode-research-runner.sh high_quality /tmp/resea
 7. 真实模型检测状态。
 8. 模型路由执行状态：真实切换 / 指令级建议 / 无法验证。
 9. 搜索状态：成功 / 部分成功 / 失败。
-10. 审计等级：PASS / CONDITIONAL_PASS / FAIL。
-11. 报告可用性：正式版 / 内部初稿 / 离线初稿 / 仅供参考。
-12. 是否触发模型升级。
-13. 是否触发 fallback。
-14. 主要结论。
-15. 主要修改/优化点。
-16. 仍缺哪些真实数据。
-17. 必须补充核验的来源。
-18. 是否建议进入下一步。
-19. 是否需要人工复核的高风险部分。
+10. 使用的数据来源类型（按 external_authoritative / external_media / local_vault / local_wiki / uploaded_files / model_reasoning 列举）。
+11. 来源审计等级：PASS / CONDITIONAL_PASS / FAIL。
+12. 是否存在来源失败。
+13. 哪些关键结论需要人工核验。
+14. 报告可用性：正式版 / 内部初稿 / 离线初稿 / 仅供参考。
+15. 是否触发模型升级。
+16. 是否触发 fallback。
+17. 主要结论。
+18. 主要修改/优化点。
+19. 仍缺哪些真实数据。
+20. 必须补充核验的来源。
+21. 是否建议进入下一步。
+22. 是否需要人工复核的高风险部分。
 
 ## Backward Compatibility
 
