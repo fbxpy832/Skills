@@ -21,9 +21,14 @@ source_types:
 
   external_media:
     description: "主流财经媒体、地方媒体、行业媒体、券商研报、咨询机构报告、企业新闻稿、产品官网、技术博客、会议演讲材料"
-    allowed_for_core_claims: false
+    allowed_for_core_claims: conditional
+    conditions:
+      - "券商研报、行业协会报告、咨询机构报告可作为 A/B 级辅助，但需标注视角偏差（如券商对目标公司持股份额）"
+      - "主流财经媒体可作为 B 级，核心结论需 2+ 独立媒体交叉验证"
+      - "企业新闻稿和产品官网属营销材料，仅作为 C 级线索"
+      - "行业媒体单篇报道不可代表行业共识"
+      - "所有媒体来源均需标注发布时间，超过 2 年的行业报道不可作为当前行业状态依据"
     default_level: "B/C"
-    usage: "补充案例和行业动态，核心结论需交叉验证"
 
   local_vault:
     description: "本地 Obsidian Vault / RichardHub 资料：公司历史报告、项目方案、用户笔记、会议纪要、技术调研、业务材料"

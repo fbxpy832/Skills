@@ -148,7 +148,10 @@ append_source_failure_log() {
   local agent="$1"
   local failure_type="$2"
   local affected_scope="$3"
-  local fallback_handling="$4"
+  local fallback_handling="${4:-}"
+  local failed_source_type="${5:-}"
+  local affected_conclusions="${6:-}"
+  local fallback_source_level="${7:-}"
   local failure_time
   failure_time="$(date '+%Y-%m-%d %H:%M:%S')"
 
@@ -160,14 +163,21 @@ append_source_failure_log() {
 source_failure_log:
   - failure_time: "$failure_time"
     failed_stage: "$agent"
+    failed_source_type: "$failed_source_type"
     failure_type: "$failure_type"
     affected_scope: "$affected_scope"
+    affected_conclusions: "$affected_conclusions"
     fallback_handling: "$fallback_handling"
+    fallback_source_level: "$fallback_source_level"
+    confidence_impact: "reduced"
+    report_usability_marking: "待核验"
+    audit_grade_cap: "CONDITIONAL_PASS"
     required_manual_sources:
       - 补充 S/A/B 级来源并记录发布时间、获取时间和统计口径
     suggested_databases_or_keywords:
-      - 根据 task_type 补充检索关键词
+      - 根据 task_type 和任务目标补充检索关键词
 \`\`\`
+
 EOF
 }
 
