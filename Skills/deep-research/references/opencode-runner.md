@@ -5,7 +5,7 @@ Use `scripts/opencode-research-runner.sh` when Deep Research should be run direc
 ## Command
 
 ```bash
-Skills/deep-research/scripts/opencode-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR]
+Skills/deep-research/scripts/opencode-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR] [--parallel|--sequential]
 ```
 
 Example:
@@ -20,19 +20,37 @@ Dry run without calling OpenCode:
 Skills/deep-research/scripts/opencode-research-runner.sh high_quality /tmp/research-task.md /tmp/deep-research-run /Users/xpy/Documents/RichardHub/Git --dry-run
 ```
 
+Force sequential fallback:
+
+```bash
+Skills/deep-research/scripts/opencode-research-runner.sh high_quality /tmp/research-task.md /tmp/deep-research-run /Users/xpy/Documents/RichardHub/Git --sequential
+```
+
 ## Inputs
 
 - `MODE`: `balanced`, `cost_saving`, `high_quality`, `long_context`, or `draft_fast`.
 - `TASK_FILE`: Markdown or text file containing the user research request.
 - `OUTPUT_DIR`: optional run directory. Defaults to `.deep-research-runs/YYYYMMDD-HHMMSS`.
 - `PROJECT_DIR`: optional working directory. Defaults to current directory.
+- `--parallel`: staged parallel execution. This is the default.
+- `--sequential`: run the same agents one by one for debugging or constrained environments.
 
 ## Agent Selection
 
-By default, the runner executes all seven agents sequentially:
+By default, the runner executes all seven agents with staged parallelism:
 
 ```text
 planner_agent,source_agent,long_context_agent,analyst_agent,scenario_agent,writer_agent,reviewer_agent
+```
+
+Default stage plan:
+
+```text
+1. planner_agent
+2. source_agent + long_context_agent in parallel
+3. analyst_agent + scenario_agent in parallel
+4. writer_agent
+5. reviewer_agent
 ```
 
 To run a subset:
@@ -61,6 +79,7 @@ The runner creates:
 - `run-summary.md`: mode, task path, model mapping, output files.
 - `prompts/`: per-agent prompts sent to OpenCode.
 - `outputs/`: per-agent Markdown outputs.
+- `logs/`: per-agent timing and file metadata.
 
 The final usable report should normally be in the `writer_agent` output, with final readiness and required revisions in the `reviewer_agent` output.
 
@@ -68,4 +87,4 @@ The final usable report should normally be in the `writer_agent` output, with fi
 
 - If OpenCode is unavailable, the runner stops with a clear error.
 - If `--dry-run` is passed, it writes prompts and placeholder outputs without calling OpenCode.
-- If true parallel Subagents are unavailable, this runner uses sequential Subagent execution and requires the final report metadata to state that sequential mode was used.
+- If parallel execution causes provider rate limits, database locks, or network pressure, rerun with `--sequential`.

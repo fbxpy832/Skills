@@ -6,17 +6,20 @@ TASK_FILE="${2:-}"
 OUTPUT_DIR="${3:-}"
 PROJECT_DIR="${4:-$(pwd)}"
 DRY_RUN="${DRY_RUN:-0}"
+EXECUTION_MODE="${DEEP_RESEARCH_EXECUTION_MODE:-parallel}"
 
 for arg in "$@"; do
-  if [ "$arg" = "--dry-run" ]; then
-    DRY_RUN="1"
-  fi
+  case "$arg" in
+    --dry-run) DRY_RUN="1" ;;
+    --parallel) EXECUTION_MODE="parallel" ;;
+    --sequential) EXECUTION_MODE="sequential" ;;
+  esac
 done
 
 if [ -z "$TASK_FILE" ]; then
   echo "ERROR: Missing task file."
-  echo "Usage: opencode-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR] [--dry-run]"
-  echo "Example: opencode-research-runner.sh high_quality /tmp/task.md /tmp/research-run /Users/xpy/Documents/RichardHub/Git"
+  echo "Usage: opencode-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR] [--dry-run] [--parallel|--sequential]"
+  echo "Example: opencode-research-runner.sh high_quality /tmp/task.md /tmp/research-run /Users/xpy/Documents/RichardHub/Git --parallel"
   exit 1
 fi
 
@@ -34,12 +37,12 @@ if [ ! -x "$ROUTER" ]; then
   exit 1
 fi
 
-if [ -z "$OUTPUT_DIR" ] || [ "$OUTPUT_DIR" = "--dry-run" ]; then
+if [ -z "$OUTPUT_DIR" ] || [ "$OUTPUT_DIR" = "--dry-run" ] || [ "$OUTPUT_DIR" = "--parallel" ] || [ "$OUTPUT_DIR" = "--sequential" ]; then
   RUN_ID="$(date +%Y%m%d-%H%M%S)"
   OUTPUT_DIR="$PROJECT_DIR/.deep-research-runs/$RUN_ID"
 fi
 
-mkdir -p "$OUTPUT_DIR/prompts" "$OUTPUT_DIR/outputs"
+mkdir -p "$OUTPUT_DIR/prompts" "$OUTPUT_DIR/outputs" "$OUTPUT_DIR/logs"
 
 OPENCODE_BIN="${OPENCODE_BIN:-}"
 if [ -z "$OPENCODE_BIN" ]; then
@@ -79,44 +82,88 @@ export NO_PROXY="${NO_PROXY:-localhost,127.0.0.1,::1}"
 
 DEFAULT_AGENTS="planner_agent,source_agent,long_context_agent,analyst_agent,scenario_agent,writer_agent,reviewer_agent"
 AGENT_LIST="${DEEP_RESEARCH_AGENTS:-$DEFAULT_AGENTS}"
-
-IFS=',' read -r -a AGENTS <<< "$AGENT_LIST"
-
-summary_file="$OUTPUT_DIR/run-summary.md"
 task_text="$(cat "$TASK_FILE")"
+summary_file="$OUTPUT_DIR/run-summary.md"
 
-cat > "$summary_file" <<EOF
-# Deep Research OpenCode Run
+agent_enabled() {
+  case ",$AGENT_LIST," in
+    *",$1,"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
-- Mode: $MODE
-- Task file: $TASK_FILE
-- Project dir: $PROJECT_DIR
-- Skill dir: $SKILL_DIR
-- Output dir: $OUTPUT_DIR
-- Agents: $AGENT_LIST
-- Dry run: $DRY_RUN
+agent_index() {
+  case "$1" in
+    planner_agent) echo "01" ;;
+    source_agent) echo "02" ;;
+    long_context_agent) echo "03" ;;
+    analyst_agent) echo "04" ;;
+    scenario_agent) echo "05" ;;
+    writer_agent) echo "06" ;;
+    reviewer_agent) echo "07" ;;
+    *) echo "99" ;;
+  esac
+}
 
-## Model Mapping
+agent_output_file() {
+  local agent="$1"
+  echo "$OUTPUT_DIR/outputs/$(agent_index "$agent")-$agent.md"
+}
 
-EOF
+agent_prompt_file() {
+  local agent="$1"
+  echo "$OUTPUT_DIR/prompts/$(agent_index "$agent")-$agent.md"
+}
 
-index=0
-previous_outputs=""
+collect_outputs() {
+  local deps=("$@")
+  local dep output
 
-for agent in "${AGENTS[@]}"; do
-  index=$((index + 1))
-  model="$("$ROUTER" "$MODE" "$agent")"
-  prompt_file="$OUTPUT_DIR/prompts/$(printf "%02d" "$index")-$agent.md"
-  output_file="$OUTPUT_DIR/outputs/$(printf "%02d" "$index")-$agent.md"
+  for dep in "${deps[@]}"; do
+    output="$(agent_output_file "$dep")"
+    if [ -f "$output" ]; then
+      echo ""
+      echo "[$dep output]"
+      echo "File: $output"
+      cat "$output"
+      echo ""
+    fi
+  done
+}
 
-  cat >> "$summary_file" <<EOF
-- $agent: $model
-EOF
+deps_for_agent() {
+  case "$1" in
+    planner_agent)
+      ;;
+    source_agent|long_context_agent)
+      echo "planner_agent"
+      ;;
+    analyst_agent|scenario_agent)
+      echo "planner_agent source_agent long_context_agent"
+      ;;
+    writer_agent)
+      echo "planner_agent source_agent long_context_agent analyst_agent scenario_agent"
+      ;;
+    reviewer_agent)
+      echo "planner_agent source_agent long_context_agent analyst_agent scenario_agent writer_agent"
+      ;;
+    *)
+      echo "planner_agent"
+      ;;
+  esac
+}
+
+write_prompt() {
+  local agent="$1"
+  local model="$2"
+  local prompt_file="$3"
+  local deps_text="$4"
 
   cat > "$prompt_file" <<EOF
 You are running the Deep Research Skill as subagent: $agent.
 
 Run mode: $MODE
+Execution mode: $EXECUTION_MODE
 Selected model: $model
 Project directory: $PROJECT_DIR
 Skill directory: $SKILL_DIR
@@ -140,9 +187,9 @@ Required skill files to follow:
 - $SKILL_DIR/references/user-context.md when the task involves the user's business context.
 - $SKILL_DIR/templates/*.md as needed by task type.
 
-Previous subagent outputs:
+Dependency outputs:
 
-$previous_outputs
+$deps_text
 
 Agent-specific instruction:
 
@@ -150,15 +197,47 @@ Agent-specific instruction:
 2. Do not decide the final report unless you are writer_agent or reviewer_agent.
 3. Do not invent sources, data, financial assumptions, legal facts, policies, prices, market sizes, or dates.
 4. If source quality is insufficient, write the data gap explicitly.
-5. If you need a missing previous output, state the dependency instead of guessing.
+5. If you need a missing dependency output, state the dependency instead of guessing.
 6. Output structured Markdown with clear YAML-like fields matching the contract for $agent.
+
+Parallel execution rules:
+
+- source_agent and long_context_agent may run concurrently after planner_agent.
+- analyst_agent and scenario_agent may run concurrently after source_agent and long_context_agent.
+- writer_agent must wait for analysis and scenario outputs.
+- reviewer_agent must wait for writer_agent and audit it against references/quality-review.md.
 
 Special rules:
 
-- reviewer_agent must audit the writer output against references/quality-review.md.
-- writer_agent must include mode, subagent/model mapping, source limitations, data gaps, and next-step recommendation.
-- If this run is effectively sequential rather than parallel, state that in the final delivery metadata.
+- writer_agent must include mode, execution mode, subagent/model mapping, source limitations, data gaps, and next-step recommendation.
+- reviewer_agent must state whether the final report is publish-ready.
 EOF
+}
+
+run_agent() {
+  local agent="$1"
+
+  if ! agent_enabled "$agent"; then
+    echo "Skipping disabled $agent"
+    return 0
+  fi
+
+  local model prompt_file output_file deps_text deps_display start_time end_time
+  local -a deps=()
+  model="$("$ROUTER" "$MODE" "$agent")"
+  prompt_file="$(agent_prompt_file "$agent")"
+  output_file="$(agent_output_file "$agent")"
+  read -r -a deps <<< "$(deps_for_agent "$agent")"
+  if [ "${#deps[@]}" -gt 0 ]; then
+    deps_text="$(collect_outputs "${deps[@]}")"
+    deps_display="${deps[*]}"
+  else
+    deps_text=""
+    deps_display="none"
+  fi
+  start_time="$(date '+%Y-%m-%d %H:%M:%S')"
+
+  write_prompt "$agent" "$model" "$prompt_file" "$deps_text"
 
   echo "Prepared $agent with model $model"
   echo "Prompt: $prompt_file"
@@ -168,14 +247,17 @@ EOF
       echo "# Dry Run: $agent"
       echo ""
       echo "- Mode: $MODE"
+      echo "- Execution mode: $EXECUTION_MODE"
       echo "- Model: $model"
+      echo "- Started: $start_time"
       echo "- Prompt file: $prompt_file"
       echo "- Output file: $output_file"
+      echo "- Dependencies: $deps_display"
     } > "$output_file"
   else
     if [ -z "$OPENCODE_BIN" ] || [ ! -x "$OPENCODE_BIN" ]; then
       echo "ERROR: opencode CLI not found. Set OPENCODE_BIN or install/login to OpenCode."
-      exit 1
+      return 1
     fi
 
     (
@@ -184,13 +266,110 @@ EOF
     ) > "$output_file"
   fi
 
-  previous_outputs="$previous_outputs
+  end_time="$(date '+%Y-%m-%d %H:%M:%S')"
+  {
+    echo "agent=$agent"
+    echo "model=$model"
+    echo "prompt=$prompt_file"
+    echo "output=$output_file"
+    echo "started=$start_time"
+    echo "ended=$end_time"
+  } > "$OUTPUT_DIR/logs/$(agent_index "$agent")-$agent.log"
+}
 
-[$agent output]
-File: $output_file
-$(cat "$output_file")
-"
+run_stage_parallel() {
+  local stage_name="$1"
+  shift
+  local agents=("$@")
+  local pids=()
+  local names=()
+  local agent pid failed=0
+
+  echo ""
+  echo "== Stage: $stage_name =="
+
+  for agent in "${agents[@]}"; do
+    if agent_enabled "$agent"; then
+      run_agent "$agent" &
+      pid="$!"
+      pids+=("$pid")
+      names+=("$agent")
+      echo "Started $agent in background pid=$pid"
+    fi
+  done
+
+  for i in "${!pids[@]}"; do
+    if wait "${pids[$i]}"; then
+      echo "Completed ${names[$i]}"
+    else
+      echo "FAILED ${names[$i]}"
+      failed=1
+    fi
+  done
+
+  if [ "$failed" != "0" ]; then
+    echo "ERROR: Stage failed: $stage_name"
+    exit 1
+  fi
+}
+
+run_stage_sequential() {
+  local stage_name="$1"
+  shift
+  local agents=("$@")
+  local agent
+
+  echo ""
+  echo "== Stage: $stage_name =="
+
+  for agent in "${agents[@]}"; do
+    run_agent "$agent"
+  done
+}
+
+run_stage() {
+  if [ "$EXECUTION_MODE" = "parallel" ]; then
+    run_stage_parallel "$@"
+  else
+    run_stage_sequential "$@"
+  fi
+}
+
+cat > "$summary_file" <<EOF
+# Deep Research OpenCode Run
+
+- Mode: $MODE
+- Execution mode: $EXECUTION_MODE
+- Task file: $TASK_FILE
+- Project dir: $PROJECT_DIR
+- Skill dir: $SKILL_DIR
+- Output dir: $OUTPUT_DIR
+- Agents: $AGENT_LIST
+- Dry run: $DRY_RUN
+
+## Stage Plan
+
+1. planner_agent
+2. source_agent + long_context_agent (parallel when enabled)
+3. analyst_agent + scenario_agent (parallel when enabled)
+4. writer_agent
+5. reviewer_agent
+
+## Model Mapping
+
+EOF
+
+for agent in planner_agent source_agent long_context_agent analyst_agent scenario_agent writer_agent reviewer_agent; do
+  if agent_enabled "$agent"; then
+    echo "- $agent: $( "$ROUTER" "$MODE" "$agent" )" >> "$summary_file"
+  fi
 done
+
+run_stage "planning" planner_agent
+run_stage "evidence_collection" source_agent long_context_agent
+run_stage "analysis_and_scenario" analyst_agent scenario_agent
+run_stage "writing" writer_agent
+run_stage "review" reviewer_agent
 
 cat >> "$summary_file" <<EOF
 
@@ -199,7 +378,17 @@ cat >> "$summary_file" <<EOF
 EOF
 
 for f in "$OUTPUT_DIR"/outputs/*.md; do
-  echo "- $f" >> "$summary_file"
+  [ -f "$f" ] && echo "- $f" >> "$summary_file"
+done
+
+cat >> "$summary_file" <<EOF
+
+## Logs
+
+EOF
+
+for f in "$OUTPUT_DIR"/logs/*.log; do
+  [ -f "$f" ] && echo "- $f" >> "$summary_file"
 done
 
 echo ""

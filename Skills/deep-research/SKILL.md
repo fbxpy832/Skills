@@ -95,7 +95,7 @@ Skills/deep-research/scripts/opencode-research-runner.sh MODE TASK_FILE [OUTPUT_
 Skills/deep-research/scripts/opencode-research-runner.sh high_quality /tmp/research-task.md /tmp/deep-research-run /Users/xpy/Documents/RichardHub/Git
 ```
 
-该 runner 会按 `mode + agent` 调用 `scripts/model-router.sh`，顺序执行 planner、source、long_context、analyst、scenario、writer、reviewer 七个 Subagent。真实并发不可用时，这是可执行的顺序式 Subagent 流程。详见 [references/opencode-runner.md](references/opencode-runner.md)。
+该 runner 会按 `mode + agent` 调用 `scripts/model-router.sh`，默认采用分阶段并发：planner 先跑，source 与 long_context 并发，analyst 与 scenario 并发，writer 汇总，reviewer 最后审计。受限环境可用 `--sequential` 回退。详见 [references/opencode-runner.md](references/opencode-runner.md)。
 
 ## Source And Data Rules
 
