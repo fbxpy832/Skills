@@ -92,6 +92,31 @@ source_agent 返回资料时必须包含：
 - 抽取事实。
 - 可靠性备注。
 - 可直接放入参考资料的引用文本。
+- 搜索状态：success / partial_success / failed。
+- 来源缺口清单。
+- 失败时的 `source_failure_log`。
+
+## Technical Route Source Requirements
+
+技术路线研究类任务必须启用 source_agent。高质量技术路线报告必须优先核验：
+
+- IEEE Xplore。
+- arXiv。
+- ACM Digital Library。
+- ISSCC。
+- IEDM。
+- Hot Chips。
+- 相关公司官网。
+- 专利数据库。
+- 头部半导体公司白皮书或技术博客。
+- 招投标、产业政策、投融资公开信息。
+
+如果搜索失败，source_agent 仍必须输出：
+
+- 来源缺口清单。
+- 建议补充检索的数据库。
+- 建议补充检索的关键词。
+- 当前哪些技术结论不能作为最终决策依据。
 
 ## Forbidden
 

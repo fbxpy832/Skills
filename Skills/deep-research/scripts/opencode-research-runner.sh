@@ -43,6 +43,8 @@ if [ -z "$OUTPUT_DIR" ] || [ "$OUTPUT_DIR" = "--dry-run" ] || [ "$OUTPUT_DIR" = 
 fi
 
 mkdir -p "$OUTPUT_DIR/prompts" "$OUTPUT_DIR/outputs" "$OUTPUT_DIR/logs"
+source_failure_log_file="$OUTPUT_DIR/source_failure_log.md"
+execution_context_file="$OUTPUT_DIR/execution-context.md"
 
 OPENCODE_BIN="${OPENCODE_BIN:-}"
 if [ -z "$OPENCODE_BIN" ]; then
@@ -131,6 +133,33 @@ collect_outputs() {
   done
 }
 
+append_source_failure_log() {
+  local agent="$1"
+  local failure_type="$2"
+  local affected_scope="$3"
+  local fallback_handling="$4"
+  local failure_time
+  failure_time="$(date '+%Y-%m-%d %H:%M:%S')"
+
+  cat >> "$source_failure_log_file" <<EOF
+
+## Failure Entry
+
+\`\`\`yaml
+source_failure_log:
+  - failure_time: "$failure_time"
+    failed_stage: "$agent"
+    failure_type: "$failure_type"
+    affected_scope: "$affected_scope"
+    fallback_handling: "$fallback_handling"
+    required_manual_sources:
+      - 补充 S/A/B 级来源并记录发布时间、获取时间和统计口径
+    suggested_databases_or_keywords:
+      - 根据 task_type 补充检索关键词
+\`\`\`
+EOF
+}
+
 deps_for_agent() {
   case "$1" in
     planner_agent)
@@ -164,7 +193,9 @@ You are running the Deep Research Skill as subagent: $agent.
 
 Run mode: $MODE
 Execution mode: $EXECUTION_MODE
-Selected model: $model
+Requested model route: $model
+Actual model detection status: not_verified
+Model route execution status: unable_to_verify
 Project directory: $PROJECT_DIR
 Skill directory: $SKILL_DIR
 
@@ -182,7 +213,9 @@ Required skill files to follow:
 - $SKILL_DIR/references/task-classification.md
 - $SKILL_DIR/references/subagents.md
 - $SKILL_DIR/references/source-audit.md
+- $SKILL_DIR/references/source-failure-log.md
 - $SKILL_DIR/references/quality-review.md
+- $SKILL_DIR/references/execution-consistency.md
 - $SKILL_DIR/references/output-rules.md
 - $SKILL_DIR/references/user-context.md when the task involves the user's business context.
 - $SKILL_DIR/templates/*.md as needed by task type.
@@ -199,6 +232,8 @@ Agent-specific instruction:
 4. If source quality is insufficient, write the data gap explicitly.
 5. If you need a missing dependency output, state the dependency instead of guessing.
 6. Output structured Markdown with clear YAML-like fields matching the contract for $agent.
+7. Treat the requested model route as a requested model only. Do not write that the model was actually used unless execution logs or OpenCode state explicitly verify it.
+8. If actual model detection is not available, write "模型使用未能自动验证".
 
 Parallel execution rules:
 
@@ -210,7 +245,9 @@ Parallel execution rules:
 Special rules:
 
 - writer_agent must include mode, execution mode, subagent/model mapping, source limitations, data gaps, and next-step recommendation.
-- reviewer_agent must state whether the final report is publish-ready.
+- writer_agent must include real_model_detection_status, model_route_execution_status, search_status, audit_grade placeholder, report_usability, and required_source_verification.
+- reviewer_agent must state PASS / CONDITIONAL_PASS / FAIL and whether the final report is publish-ready.
+- high_quality must not PASS if actual model cannot be verified, if web/source collection failed, or if source_failure_log contains failure entries.
 EOF
 }
 
@@ -248,7 +285,9 @@ run_agent() {
       echo ""
       echo "- Mode: $MODE"
       echo "- Execution mode: $EXECUTION_MODE"
-      echo "- Model: $model"
+      echo "- Requested model route: $model"
+      echo "- Actual model detection status: not_verified"
+      echo "- Model route execution status: instruction_level_recommendation"
       echo "- Started: $start_time"
       echo "- Prompt file: $prompt_file"
       echo "- Output file: $output_file"
@@ -260,16 +299,21 @@ run_agent() {
       return 1
     fi
 
-    (
+    if ! (
       cd "$PROJECT_DIR"
       "$OPENCODE_BIN" run --model "$model" "$(cat "$prompt_file")"
-    ) > "$output_file"
+    ) > "$output_file"; then
+      append_source_failure_log "$agent" "agent_execution_failed" "Subagent output unavailable or incomplete." "Mark report as draft and require manual verification."
+      return 1
+    fi
   fi
 
   end_time="$(date '+%Y-%m-%d %H:%M:%S')"
   {
     echo "agent=$agent"
-    echo "model=$model"
+    echo "requested_model=$model"
+    echo "actual_model_detection_status=not_verified"
+    echo "model_route_execution_status=unable_to_verify"
     echo "prompt=$prompt_file"
     echo "output=$output_file"
     echo "started=$start_time"
@@ -359,9 +403,41 @@ cat > "$summary_file" <<EOF
 
 EOF
 
+cat > "$execution_context_file" <<EOF
+# Execution Context
+
+- mode: $MODE
+- execution_mode: $EXECUTION_MODE
+- dry_run: $DRY_RUN
+- actual_model_detection_status: not_verified
+- model_route_execution_status: unable_to_verify
+- model_statement_rule: Do not claim a requested model was actually used unless OpenCode logs, command output, or UI state verifies it.
+- high_quality_limit: If actual model cannot be verified, high_quality output cannot be PASS.
+
+EOF
+
+cat > "$source_failure_log_file" <<EOF
+# Source Failure Log
+
+If source collection, web search, fetch, or source validation fails, append entries using this shape:
+
+\`\`\`yaml
+source_failure_log:
+  - failure_time:
+    failed_stage:
+    failure_type:
+    affected_scope:
+    fallback_handling:
+    required_manual_sources:
+    suggested_databases_or_keywords:
+\`\`\`
+EOF
+
 for agent in planner_agent source_agent long_context_agent analyst_agent scenario_agent writer_agent reviewer_agent; do
   if agent_enabled "$agent"; then
-    echo "- $agent: $( "$ROUTER" "$MODE" "$agent" )" >> "$summary_file"
+    requested_model="$( "$ROUTER" "$MODE" "$agent" )"
+    echo "- $agent: requested_model=$requested_model; actual_model_detection_status=not_verified" >> "$summary_file"
+    echo "- $agent: requested_model=$requested_model; actual_model_detection_status=not_verified" >> "$execution_context_file"
   fi
 done
 
@@ -390,6 +466,17 @@ EOF
 for f in "$OUTPUT_DIR"/logs/*.log; do
   [ -f "$f" ] && echo "- $f" >> "$summary_file"
 done
+
+cat >> "$summary_file" <<EOF
+
+## Execution Consistency
+
+- actual_model_detection_status: not_verified
+- model_route_execution_status: unable_to_verify
+- source_failure_log: $source_failure_log_file
+- execution_context: $execution_context_file
+- reporting_rule: Requested model routes must not be described as verified actual model usage.
+EOF
 
 echo ""
 echo "Deep Research OpenCode run complete."

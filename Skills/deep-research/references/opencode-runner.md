@@ -64,6 +64,8 @@ DEEP_RESEARCH_AGENTS="planner_agent,source_agent,analyst_agent,writer_agent,revi
 
 The runner calls `scripts/model-router.sh MODE AGENT` for each agent.
 
+Important: model routing is auditable only as a requested route unless OpenCode command output, logs, or UI state verifies the actual model. Do not claim a model was actually used only because `model-routing.yaml` recommended it.
+
 Default mapping:
 
 - `balanced`: Pro for planning/analysis/scenario/writing/review, Flash for sources, Kimi 2.6 for long context.
@@ -77,6 +79,8 @@ Default mapping:
 The runner creates:
 
 - `run-summary.md`: mode, task path, model mapping, output files.
+- `execution-context.md`: requested model routes and actual model detection status.
+- `source_failure_log.md`: source/search/fetch failure log template for failed or insufficient source collection.
 - `prompts/`: per-agent prompts sent to OpenCode.
 - `outputs/`: per-agent Markdown outputs.
 - `logs/`: per-agent timing and file metadata.
@@ -88,3 +92,13 @@ The final usable report should normally be in the `writer_agent` output, with fi
 - If OpenCode is unavailable, the runner stops with a clear error.
 - If `--dry-run` is passed, it writes prompts and placeholder outputs without calling OpenCode.
 - If parallel execution causes provider rate limits, database locks, or network pressure, rerun with `--sequential`.
+
+## Quality Downgrade Behavior
+
+For `high_quality` mode:
+
+- If actual model use cannot be verified, the report cannot be `PASS`.
+- If web search, source collection, or source validation fails, the report must be marked `离线初稿` or `待联网核验版`.
+- If source collection fails but structure is complete, use `CONDITIONAL_PASS`.
+- If core conclusions lack S/A/B sources and no反证扫描 exists, use `FAIL`.
+- Final summaries must include `real_model_detection_status`, `model_route_execution_status`, `search_status`, `audit_grade`, `report_usability`, and required manual source verification.

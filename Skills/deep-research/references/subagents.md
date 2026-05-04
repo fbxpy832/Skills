@@ -165,6 +165,9 @@ cannot_calculate_items:
 - 输出符合指定风格的 Markdown 报告。
 - 形成领导速览版、正文和附录。
 - 不得新增未经验证的数据。
+- 不得把请求模型或路由建议写成真实已使用模型。
+- 如果模型无法验证，必须写“模型使用未能自动验证”。
+- 如果搜索失败或来源不足，必须将 high_quality 报告标为离线初稿/待联网核验版。
 
 推荐模型：
 
@@ -181,6 +184,11 @@ full_report:
 appendices:
 source_list:
 data_gap_list:
+real_model_detection_status:
+model_route_execution_status:
+search_status:
+report_usability:
+required_source_verification:
 ```
 
 ## reviewer_agent
@@ -195,6 +203,10 @@ data_gap_list:
 - 检查是否有风险边界。
 - 检查建议是否可执行。
 - 检查是否符合用户指定风格。
+- 检查真实模型是否可验证。
+- 检查模型路由是否被误写为实际使用。
+- 检查搜索失败是否降级为离线初稿/待联网核验版。
+- 检查 `source_failure_log` 是否完整。
 - 对不合格内容提出修改意见。
 - 必要时触发自动修订。
 
@@ -206,12 +218,17 @@ data_gap_list:
 输出格式：
 
 ```yaml
-pass_or_fail:
+audit_grade: PASS / CONDITIONAL_PASS / FAIL
+report_usability:
+real_model_detection_status:
+model_route_execution_status:
+search_status:
 major_issues:
 minor_issues:
 hallucination_risk:
 source_quality_score:
 actionability_score:
+source_failure_log:
 required_revisions:
 final_publish_ready:
 ```

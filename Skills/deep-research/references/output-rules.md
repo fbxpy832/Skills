@@ -21,6 +21,7 @@ YYYY-MM-DD-研究主题-报告类型.md
 - 不覆盖原文件，除非用户明确要求。
 - 如果目标文件已存在，追加 `-v2`、`-v3`。
 - 二次优化加入“优化版”“立项版”“审校版”等后缀。
+- 外部搜索失败、来源抓取失败或来源不足时，文件名必须加入 `-离线初稿` 或 `-待联网核验版`。
 - 文件名去除 `/\:*?"<>|` 等不安全字符。
 
 ## Report Footer
@@ -35,10 +36,17 @@ YYYY-MM-DD-研究主题-报告类型.md
 任务类型: ...
 Subagent 分工: ...
 模型使用说明: ...
+真实模型检测状态: verified / partially_verified / not_verified
+模型路由执行状态: real_switch / instruction_level_recommendation / unable_to_verify
+搜索状态: success / partial_success / failed
+审计等级: PASS / CONDITIONAL_PASS / FAIL
+报告可用性: 正式版 / 内部初稿 / 离线初稿 / 仅供参考
 是否触发模型升级: 是/否，原因
 是否触发 fallback: 是/否，原因
 来源等级说明: S/A/B/C/D
+source_failure_log: ...
 数据局限性: ...
+必须补充核验的来源: ...
 下一步建议: ...
 作者: AI Deep Research Skill
 ```
@@ -52,7 +60,12 @@ Subagent 分工: ...
 - 自动选择的运行模式。
 - 使用的研究框架。
 - 启用的 Subagent。
-- 每个 Subagent 使用的模型。
+- 每个 Subagent 的请求模型与真实模型检测状态。
+- 真实模型检测状态。
+- 模型路由执行状态：真实切换 / 指令级建议 / 无法验证。
+- 搜索状态：成功 / 部分成功 / 失败。
+- 审计等级：PASS / CONDITIONAL_PASS / FAIL。
+- 报告可用性：正式版 / 内部初稿 / 离线初稿 / 仅供参考。
 - 是否触发模型升级。
 - 是否触发 fallback。
 - 主要结论。
@@ -60,6 +73,16 @@ Subagent 分工: ...
 - 仍缺哪些真实数据。
 - 是否建议进入下一步。
 - 是否需要人工复核的高风险部分。
+- 必须补充核验的来源。
+
+## Model Statement Rule
+
+模型使用说明只能写真实可检测状态：
+
+- runner 日志中有 `requested_model`：写“请求模型为 ...”。
+- OpenCode 状态栏或命令输出可检测实际模型：写“检测到实际模型为 ...”。
+- 无法检测：写“模型使用未能自动验证”。
+- 不得把 `model-routing.yaml` 的建议模型写成“已使用模型”。
 
 ## No File Mode
 

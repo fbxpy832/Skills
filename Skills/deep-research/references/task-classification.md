@@ -76,6 +76,12 @@
 
 默认模式：`high_quality`。
 
+强制要求：
+
+- 必须启用 `source_agent`。
+- high_quality 报告必须优先核验 IEEE Xplore、arXiv、ACM Digital Library、ISSCC、IEDM、Hot Chips、公司官网、专利数据库、头部半导体公司白皮书/技术博客、招投标/产业政策/投融资公开信息。
+- 搜索失败时不得 PASS，只能输出离线初稿/待联网核验版，并列出来源缺口清单和建议检索关键词。
+
 ## D. 投资/公司分析类 `investment_analysis`
 
 适用于：
