@@ -1,7 +1,8 @@
-
 # MemPalace per-project files (issue #185)
 mempalace.yaml
 entities.json
 
 # Deep Research local OpenCode run artifacts
 .deep-research-runs/
+
+.DS_Store
