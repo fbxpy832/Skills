@@ -39,6 +39,19 @@ Deep Research 是一套“研究决策型”工作流，不只是资料汇总。
 
 ## Phase 0 Quick Start
 
+### 强制前置加载
+
+执行任何操作前，**必须先加载搜索工具配置**：
+
+```yaml
+必须读取: references/search-tools.md
+  - 目的: 获取 Brave API 密钥和代理配置
+  - 位置: references/search-tools.md
+  - 内容: 搜索引擎矩阵、Scheme A/B/C/D 方案、预算控制
+```
+
+未读 search-tools.md 前，不得发起任何搜索或执行任何 Phase。
+
 收到研究任务后，先输出内部判断并执行，不要频繁追问；除非缺失信息会导致研究方向完全不同。
 
 1. 识别 `task_type`：
@@ -142,6 +155,8 @@ source_plan 可作为内部过程，不强制写入报告正文。但最终交�
 6. 审计等级最高为 `CONDITIONAL_PASS`。
 
 详见 [references/source-failure-log.md](references/source-failure-log.md) 和 [references/source-boundaries.md](references/source-boundaries.md)。
+
+> **重要：** 在判定"外部搜索失败"前，必须按 [references/search-tools.md](references/search-tools.md) 定义的 **Scheme A → B → C → D 逐级尝试**。跳过 Brave API（Scheme A）直接降级是禁止行为。
 
 ## Model Routing Rules
 

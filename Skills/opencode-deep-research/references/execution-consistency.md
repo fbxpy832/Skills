@@ -27,6 +27,8 @@
 - OpenCode UI/状态栏模型是否与报告声明一致。
 - 启用的 Subagent 是否与任务类型匹配。
 - 技术路线任务是否启用 source_agent。
+- **是否已加载 search-tools.md 的搜索方案配置**。
+- **搜索是否按 Scheme A→B→C→D 逐级尝试（确认未跳过 Brave API）**。
 - 搜索状态是否成功。
 - 来源失败是否进入 `source_failure_log`。
 - 质量审计是否考虑搜索失败和模型不一致。
