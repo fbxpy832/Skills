@@ -50,8 +50,12 @@ def backup_file(file_path: Path) -> Optional[Path]:
     if not file_path.exists():
         return None
 
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     backup_path = file_path.parent / f"{file_path.name}.bak-{timestamp}"
+    suffix = 1
+    while backup_path.exists():
+        backup_path = file_path.parent / f"{file_path.name}.bak-{timestamp}-{suffix}"
+        suffix += 1
     shutil.copy2(file_path, backup_path)
     get_logger().info(f"Backed up {file_path} -> {backup_path}")
     return backup_path
