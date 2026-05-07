@@ -119,11 +119,10 @@ def _extract_indented_list(text: str, section_header: str) -> List[str]:
     remaining = text[idx + len(section_header):]
     items = []
     for line in remaining.split('\n'):
-        stripped = line.strip()
-        if stripped.startswith('-'):
-            items.append(stripped[1:].strip())
-        elif stripped and not stripped.startswith('-'):
-            # End of indented list
+        # Only accept indented list items (two spaces + dash)
+        if line.startswith('  - '):
+            items.append(line[4:].strip())
+        elif line.strip() and not line.startswith('  - '):
             break
     return items
 

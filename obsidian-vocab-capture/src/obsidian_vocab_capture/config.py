@@ -6,6 +6,7 @@ Reads configuration from:
 3. Defaults (lowest priority)
 """
 
+import copy
 import json
 import os
 from pathlib import Path
@@ -63,8 +64,8 @@ def load_config() -> Config:
 
     Priority: env vars > config file > defaults
     """
-    # Start with defaults
-    config_dict = DEFAULT_CONFIG.copy()
+    # Start with defaults (deep copy to avoid mutating module-level dict)
+    config_dict = copy.deepcopy(DEFAULT_CONFIG)
 
     # Load from config file if exists
     if _CONFIG_FILE.exists():
