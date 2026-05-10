@@ -11,7 +11,7 @@ Deep Research 是一套“研究决策型”工作流，不只是资料汇总。
 
 1. 先分类，再研究：不要收到题目就直接搜索或写报告。
 2. 先判断决策问题：明确用户真正要回答的是“是否做、怎么做、投入多少、风险在哪、下一步是什么”。
-3. 先规划，再分工：建立问题树，决定是否需要公开搜索、内部文件读取、长文档分析、财务测算、技术对比、质量审计。
+3. 先规划，再分工：建立问题树，默认必须发起公开搜索（除非用户明确指示"不需要联网搜索""离线分析""不用搜索"），并确定内部文件读取、长文档分析、财务测算、技术对比、质量审计。
 4. 先证据，再结论：关键事实必须有来源等级；缺数据时列为数据缺口，不虚构。
 5. 先反证，再建议：重大结论必须做反证扫描和风险边界说明。
 6. 先审计，再交付：最终报告必须经过 reviewer_agent 质量审计；不通过时自动修订一次。
@@ -25,6 +25,7 @@ Deep Research 是一套“研究决策型”工作流，不只是资料汇总。
 - 来源类型与边界：读 [references/source-boundaries.md](references/source-boundaries.md)。
 - 来源分级和审计：读 [references/source-audit.md](references/source-audit.md)。
 - 来源失败日志：读 [references/source-failure-log.md](references/source-failure-log.md)。
+- 搜索工具方案（工具矩阵、搜索引擎选择、降级策略）：读 [references/search-tools.md](references/search-tools.md)。
 - 模型路由与模式：读 [model-routing.yaml](model-routing.yaml)。
 - OpenCode 直接调用：读 [references/opencode-runner.md](references/opencode-runner.md)，使用 `scripts/opencode-research-runner.sh`。
 - 完整阶段流程：读 [references/workflow.md](references/workflow.md)。
@@ -37,6 +38,19 @@ Deep Research 是一套“研究决策型”工作流，不只是资料汇总。
 - 报告模板：按任务类型读取 `templates/` 下对应模板。
 
 ## Phase 0 Quick Start
+
+### 强制前置加载
+
+执行任何操作前，**必须先加载搜索工具配置**：
+
+```yaml
+必须读取: references/search-tools.md
+  - 目的: 获取 Brave API 密钥和代理配置
+  - 位置: references/search-tools.md
+  - 内容: 搜索引擎矩阵、Scheme A/B/C/D 方案、预算控制
+```
+
+未读 search-tools.md 前，不得发起任何搜索或执行任何 Phase。
 
 收到研究任务后，先输出内部判断并执行，不要频繁追问；除非缺失信息会导致研究方向完全不同。
 
@@ -141,6 +155,8 @@ source_plan 可作为内部过程，不强制写入报告正文。但最终交�
 6. 审计等级最高为 `CONDITIONAL_PASS`。
 
 详见 [references/source-failure-log.md](references/source-failure-log.md) 和 [references/source-boundaries.md](references/source-boundaries.md)。
+
+> **重要：** 在判定"外部搜索失败"前，必须按 [references/search-tools.md](references/search-tools.md) 定义的 **Scheme A → B → C → D 逐级尝试**。跳过 Brave API（Scheme A）直接降级是禁止行为。
 
 ## Model Routing Rules
 

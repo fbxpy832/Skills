@@ -1,0 +1,4 @@
+0000000000000000000000000000000000000000 96bb14d0d028c392a9f70d6836fa6ae448c84d71 Richard Xie <richard@RichardMacBook-Pro.local> 1777277173 +0800	commit (initial): feat: enhance obsidian-article-extractor with parallel image downloads, retry logic and smarter caching
+96bb14d0d028c392a9f70d6836fa6ae448c84d71 9378aadcfc497ac4fa75509231fde4e895547743 Richard Xie <richard@RichardMacBook-Pro.local> 1777454389 +0800	commit: Add codex opencode delegator skill
+9378aadcfc497ac4fa75509231fde4e895547743 7e1a272988dd1581bd96a12c3768dd0e0116e9b5 Richard Xie <richard@RichardMacBook-Pro.local> 1777602939 +0800	commit: init: setup CC Switch install pipeline and 4 skills
+7e1a272988dd1581bd96a12c3768dd0e0116e9b5 ecc062599b96aca6eaf858933beb25ca48215a08 Richard Xie <richard@RichardMacBook-Pro.local> 1777607033 +0800	commit: clean: keep only 4 skills at root, remove scripts/templates/readme

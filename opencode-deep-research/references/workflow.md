@@ -34,6 +34,59 @@
 
 ## Phase 2: 资料搜索与来源分级
 
+### Phase 1.5 强制前置检查
+
+进入 Phase 2 前必须先完成以下检查清单（不得跳过）：
+
+```
+[ ] 已读 references/search-tools.md（包含 Brave API 密钥、代理配置、搜索方案矩阵）
+[ ] 已设代理变量：export https_proxy=http://127.0.0.1:7897 export http_proxy=http://127.0.0.1:7897
+[ ] 已准备搜索词清单（经过去重和合并）
+[ ] 已声明本次研究预算（按任务类型查 search-tools.md 预算表）
+[ ] 已初始化搜索计数和缓存
+```
+
+检查清单未完成前，不得进入 Phase 2。
+
+### 搜索执行协议（按顺序执行，不得跳过）
+
+搜索必须按以下顺序执行，每步完成后评估结果再决定是否进入下一步：
+
+**第 1 步：Scheme A — Brave Search API（必须执行）**
+
+```
+bash curl + 代理 + Brave API 密钥（BSAy9QIBpTA4saK93z3M-21Cg9kTKrK）
+```
+- 详情见 [references/search-tools.md](references/search-tools.md)
+- 禁止跳过此步直接走 Bing 或标记搜索失败
+
+**第 2 步：Scheme B — Bing 通用搜索（Brave 结果不足时）**
+
+```
+webfetch(format="markdown", url="https://cn.bing.com/search?q=KEYWORD")
+```
+
+**第 3 步：Scheme C — 直接抓取已知权威来源**
+
+从 Brave/Bing 结果中识别权威 URL，用 webfetch 抓取完整页面。
+
+**第 4 步：Scheme D — 英文搜索发现中文来源**
+
+用英文关键词搜 Brave API，从英文文章引用中发现中文权威来源。
+
+**第 5 步：全部失败 → 记录 source_failure_log**
+
+确认所有搜索方案均失败后，才能标记"搜索失败"。
+
+### 强制外部搜索规则
+
+- 默认必须发起外部联网搜索，不可跳过。仅当用户**明确**指示"不需要联网搜索""离线分析""不用搜索""仅本地资料"时，方可跳过。
+- 用户说"快速初稿""先给框架""简单整理"等不构成跳过搜索的理由——除非明确说"不用联网"。
+- 搜索失败的，必须记录 `source_failure_log`，按降级规则标注为"离线初稿"或"待联网核验版"，不得标为"正式高质量报告"。
+- `high_quality` 模式下搜索失败 → 审计等级最高 `CONDITIONAL_PASS`。
+- `cost_saving` / `draft_fast` 模式下，仍需尝试外部搜索；搜索失败时不强制降级但必须记录。
+- 搜索执行后必须报告"用了哪些 Scheme + 成功/失败 + 下一步"。
+
 优先使用 S/A/B 来源。对每条关键数据记录：
 
 - 标题。

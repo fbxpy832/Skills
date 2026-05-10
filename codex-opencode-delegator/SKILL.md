@@ -27,19 +27,18 @@ Before delegating, the local script should:
 6. Set `XDG_DATA_HOME=$HOME/.local/share` and `XDG_STATE_HOME=$HOME/.local/state` unless already provided.
 7. Ensure `$XDG_DATA_HOME/opencode` and `$XDG_STATE_HOME/opencode` exist and are writable.
 8. If they are not writable, report the issue and do not use `sudo`.
-9. If proxy variables are absent and network calls fail, retry only with temporary per-process proxy variables:
-   - `HTTP_PROXY=http://127.0.0.1:7890`
-   - `HTTPS_PROXY=http://127.0.0.1:7890`
-   - `ALL_PROXY=socks5://127.0.0.1:7890`
-   - `NO_PROXY=localhost,127.0.0.1,::1`
+9. Check writability of individual database files (`opencode.db`, `opencode.db-wal`, `opencode.db-shm`) — directory writability alone is insufficient.
+10. Run `PRAGMA wal_checkpoint(TRUNCATE)` via sqlite3 as a hard pre-flight gate. Check sqlite3 exit code explicitly (not text match) — non-zero exit means failure. On failure, output the sqlite3 error, database file permissions with extended attributes/ACL, and recent log file listing.
+11. If OpenCode fails during delegation, output the actual latest log file listing instead of relying on a potentially stale log path from OpenCode's error message.
+12. Do not set proxy variables. Let the existing environment pass through any proxy configuration the user has already set. If network calls fail due to proxy issues, report the failure; do not hardcode a proxy address.
 
-Never fix OpenCode runtime failures by changing provider configuration, API keys, shell profile files, global proxy settings, or Codex configuration. The stable pattern is: absolute OpenCode path + per-process `HOME`/`XDG_*`/proxy variables + explicit filesystem permissions for OpenCode's data and state directories.
+Never fix OpenCode runtime failures by changing provider configuration, API keys, shell profile files, global proxy settings, or Codex configuration. The stable pattern is: absolute OpenCode path + per-process `HOME`/`XDG_*` variables + explicit filesystem permissions for OpenCode's data and state directories.
 
 Common failure interpretation:
 
-- `PRAGMA wal_checkpoint(PASSIVE)` or `readonly database`: Codex likely lacks write permission to `$XDG_DATA_HOME/opencode` or `$XDG_STATE_HOME/opencode`.
+- `PRAGMA wal_checkpoint(PASSIVE)` or `readonly database`: stale WAL frames or file-level write restriction. The delegate script checks both directory writability and individual DB file writability, and runs `PRAGMA wal_checkpoint(TRUNCATE)` as a hard pre-flight gate (exit code check, not text match). The error output includes extended attributes (`ls -le@`), owner, ACL, and `xattr` diagnostics — not a crude `chmod 644 *`.
 - `ProviderModelNotFoundError` after changing `XDG_DATA_HOME`: the temporary data directory probably lacks the user's normal auth/provider state. Use the real user data directory instead.
-- `FailedToOpenSocket` or `ConnectionRefused` to `opencode.ai`: check Codex network permission and per-process proxy variables before judging the model or provider.
+- `FailedToOpenSocket` or `ConnectionRefused` to `opencode.ai`: check Codex network permission before judging the model or provider.
 
 ## Trigger Policy
 

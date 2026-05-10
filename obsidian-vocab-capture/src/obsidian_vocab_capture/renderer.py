@@ -5,19 +5,21 @@ from typing import Any, Dict, Optional
 
 
 def render_vocab_entry(data: Dict[str, Any], date_str: Optional[str] = None,
-                       context: Optional[str] = None) -> str:
+                       context: Optional[str] = None,
+                       date_format: str = "%Y-%m-%d") -> str:
     """Render a vocabulary entry as Markdown.
 
     Args:
         data: The AI response JSON.
-        date_str: Date string (YYYY-MM-DD). Defaults to today.
+        date_str: Date string. Defaults to today formatted with date_format.
         context: Optional context sentence.
+        date_format: strftime format string for date rendering.
 
     Returns:
         Markdown string for the vocabulary entry.
     """
     if date_str is None:
-        date_str = datetime.now().strftime("%Y-%m-%d")
+        date_str = datetime.now().strftime(date_format)
 
     word = data.get("word", "")
     phonetic = data.get("phonetic", "")
@@ -79,18 +81,10 @@ def render_vocab_entry(data: Dict[str, Any], date_str: Optional[str] = None,
 
 
 def render_encounter_entry(date_str: Optional[str] = None,
-                           context: Optional[str] = None) -> str:
-    """Render an encounter record for an existing word.
-
-    Args:
-        date_str: Date string.
-        context: Optional context where word was encountered.
-
-    Returns:
-        Markdown string for the encounter entry.
-    """
+                           context: Optional[str] = None,
+                           date_format: str = "%Y-%m-%d") -> str:
     if date_str is None:
-        date_str = datetime.now().strftime("%Y-%m-%d")
+        date_str = datetime.now().strftime(date_format)
 
     lines = ["### 再次遇到", ""]
     if context:

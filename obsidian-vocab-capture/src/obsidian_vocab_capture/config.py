@@ -10,9 +10,9 @@ import copy
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class AIConfig(BaseModel):
@@ -22,14 +22,27 @@ class AIConfig(BaseModel):
     model: str = "gpt-4.1-mini"
 
 
+VALID_DUPLICATE_POLICIES = ("skip", "append_encounter", "overwrite")
+
+
 class Config(BaseModel):
     """Main configuration."""
-    vault_path: str = "~/Documents/RichardHub"
-    vocab_file: str = "~/Documents/RichardHub/English/Vocabulary.md"
+    vault_path: str = "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub"
+    vocab_file: str = "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub/阅读学习/Vocabulary.md"
     ai: AIConfig = Field(default_factory=AIConfig)
     language: str = "zh-CN"
     duplicate_policy: str = "append_encounter"  # skip | append_encounter | overwrite
-    date_format: str = "YYYY-MM-DD"
+    date_format: str = "%Y-%m-%d"
+
+    @field_validator("duplicate_policy")
+    @classmethod
+    def validate_duplicate_policy(cls, v: str) -> str:
+        if v not in VALID_DUPLICATE_POLICIES:
+            raise ValueError(
+                f"Invalid duplicate_policy: '{v}'. "
+                f"Must be one of: {', '.join(VALID_DUPLICATE_POLICIES)}"
+            )
+        return v
 
     @property
     def expanded_vault_path(self) -> Path:
@@ -46,8 +59,8 @@ _LOG_DIR = Path("~/.local/state/obsidian-vocab-capture/logs").expanduser()
 
 # Default paths
 DEFAULT_CONFIG = {
-    "vault_path": "~/Documents/RichardHub",
-    "vocab_file": "~/Documents/RichardHub/English/Vocabulary.md",
+    "vault_path": "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub",
+    "vocab_file": "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub/阅读学习/Vocabulary.md",
     "ai": {
         "base_url": "https://api.openai.com/v1",
         "api_key": "",
@@ -55,7 +68,7 @@ DEFAULT_CONFIG = {
     },
     "language": "zh-CN",
     "duplicate_policy": "append_encounter",
-    "date_format": "YYYY-MM-DD",
+    "date_format": "%Y-%m-%d",
 }
 
 
@@ -99,6 +112,14 @@ def load_config() -> Config:
                 config_dict[section][key] = value
             else:
                 config_dict[key] = value
+
+    # Map legacy Moment-style date tokens to strftime equivalents
+    _LEGACY_DATE_FORMATS = {
+        "YYYY-MM-DD": "%Y-%m-%d",
+    }
+    df = config_dict.get("date_format", "")
+    if df in _LEGACY_DATE_FORMATS:
+        config_dict["date_format"] = _LEGACY_DATE_FORMATS[df]
 
     return Config(**config_dict)
 

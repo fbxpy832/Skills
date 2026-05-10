@@ -29,6 +29,10 @@ if [ "$MODEL" = "codex-review" ]; then
   exit 0
 fi
 
+export HOME="${HOME:-/Users/xpy}"
+export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
+
 OPENCODE_BIN="${OPENCODE_BIN:-}"
 if [ -z "$OPENCODE_BIN" ]; then
   if command -v opencode >/dev/null 2>&1; then
@@ -47,10 +51,6 @@ if [ -z "$OPENCODE_BIN" ] || [ ! -x "$OPENCODE_BIN" ]; then
   exit 1
 fi
 
-export HOME="${HOME:-/Users/xpy}"
-export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
-export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
-
 mkdir -p "$XDG_DATA_HOME/opencode" "$XDG_STATE_HOME/opencode"
 
 if [ ! -w "$XDG_DATA_HOME/opencode" ]; then
@@ -65,10 +65,69 @@ if [ ! -w "$XDG_STATE_HOME/opencode" ]; then
   exit 1
 fi
 
-export HTTP_PROXY="${HTTP_PROXY:-http://127.0.0.1:7890}"
-export HTTPS_PROXY="${HTTPS_PROXY:-http://127.0.0.1:7890}"
-export ALL_PROXY="${ALL_PROXY:-socks5://127.0.0.1:7890}"
-export NO_PROXY="${NO_PROXY:-localhost,127.0.0.1,::1}"
+# Check individual database file writability.
+# The directory check above passes even when the DB/WAL/SHM files
+# themselves are not writable to the current process (e.g. sandbox
+# file-level restrictions).
+DB_PATH="$XDG_DATA_HOME/opencode/opencode.db"
+for f in "$DB_PATH" "$DB_PATH-wal" "$DB_PATH-shm"; do
+  if [ -f "$f" ] && [ ! -w "$f" ]; then
+    echo "ERROR: Database file is not writable: $f"
+    echo "Check owner, mode, extended attributes, and ACLs:"
+    ls -le@ "$f" 2>&1 || true
+    echo ""
+    echo "To fix:"
+    echo "  chown $(id -u):$(id -g) $f"
+    echo "  chmod 600 $f"
+    echo "If inside a sandbox (Codex App, etc.), grant write access to: $XDG_DATA_HOME/opencode"
+    exit 1
+  fi
+done
+
+# Check SQLite WAL health before delegating.
+# OpenCode fails with PRAGMA wal_checkpoint(PASSIVE) when WAL frames
+# accumulate or the DB is inaccessible from the Codex sandbox.
+if [ -f "$DB_PATH" ]; then
+  if ! command -v sqlite3 >/dev/null 2>&1; then
+    echo "ERROR: Database exists at $DB_PATH but sqlite3 is not available."
+    echo "Install sqlite3 or check the database manually:"
+    ls -la "$DB_PATH"* 2>&1 || true
+    echo ""
+    echo "To bypass this check manually, remove or rename the database file."
+    echo "Do NOT use sudo from this script."
+    exit 1
+  fi
+  set +e
+  SQLITE_OUTPUT=$(sqlite3 "$DB_PATH" "PRAGMA wal_checkpoint(TRUNCATE);" 2>&1)
+  SQLITE_EXIT=$?
+  set -e
+  if [ $SQLITE_EXIT -ne 0 ]; then
+    echo ""
+    echo "ERROR: SQLite health check failed (exit code $SQLITE_EXIT)."
+    echo "SQLite output: $SQLITE_OUTPUT"
+    echo ""
+    echo "The Codex sandbox or current process cannot write to the SQLite database."
+    echo "Check permissions and extended attributes on:"
+    ls -le@ "$DB_PATH"* 2>&1 || true
+    echo ""
+    echo "Recent log files (last 3):"
+    ls -t "$XDG_DATA_HOME/opencode/log" 2>/dev/null | head -3 || echo "  (no log directory)"
+    echo ""
+    echo "To fix:"
+    echo "  1. Backup: cp $DB_PATH $DB_PATH.bak"
+    echo "  2. Check owner: ls -le@ $DB_PATH*"
+    echo "  3. Check extended attributes: xattr -l $DB_PATH*"
+    echo "  4. Repair: chown $(id -u):$(id -g) $XDG_DATA_HOME/opencode"
+    echo "  5. Repair: chmod 600 $DB_PATH $DB_PATH-wal $DB_PATH-shm"
+    echo "If inside a sandbox (Codex App, etc.), grant write access to: $XDG_DATA_HOME/opencode"
+    echo "Do NOT use sudo from this script."
+    exit 1
+  fi
+  CKPT_FRAMES=$(echo "$SQLITE_OUTPUT" | awk -F'|' '{print $3}')
+  if echo "$CKPT_FRAMES" | grep -qE '^[0-9]+$' && [ "$CKPT_FRAMES" -gt 0 ] 2>/dev/null; then
+    echo "[delegate] SQLite: checkpointed $CKPT_FRAMES WAL frames"
+  fi
+fi
 
 cd "$PROJECT_DIR"
 
@@ -83,4 +142,17 @@ echo "OpenCode data dir: $XDG_DATA_HOME/opencode"
 echo "OpenCode state dir: $XDG_STATE_HOME/opencode"
 echo ""
 
+set +e
 "$OPENCODE_BIN" run --model "$MODEL" "$(cat "$PROMPT_FILE")"
+OC_EXIT_CODE=$?
+set -e
+
+if [ $OC_EXIT_CODE -ne 0 ]; then
+  echo ""
+  echo "ERROR: OpenCode exited with code $OC_EXIT_CODE"
+  echo "Recent log files (last 3):"
+  ls -t "$XDG_DATA_HOME/opencode/log" 2>/dev/null | head -3 || echo "  (no log directory)"
+  echo "Database files:"
+  ls -la "$DB_PATH"* 2>&1 || true
+  exit $OC_EXIT_CODE
+fi

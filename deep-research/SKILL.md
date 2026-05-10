@@ -22,7 +22,7 @@ Deep Research 是一套“研究决策型”工作流，不只是资料汇总。
 只加载当前任务需要的文件：
 
 - 模型路由与模式：读 [model-routing.yaml](model-routing.yaml)。
-- OpenCode 直接调用：读 [references/opencode-runner.md](references/opencode-runner.md)，使用 `scripts/opencode-research-runner.sh`。
+- CLI 直接调用：读 [references/cli-runner.md](references/cli-runner.md)，使用 `scripts/research-runner.sh` 或 `scripts/sequential-research-runner.sh`。
 - 完整阶段流程：读 [references/workflow.md](references/workflow.md)。
 - 任务分类与研究框架：读 [references/task-classification.md](references/task-classification.md)。
 - Subagent 职责和输出契约：读 [references/subagents.md](references/subagents.md)。
@@ -63,44 +63,52 @@ Deep Research 是一套“研究决策型”工作流，不只是资料汇总。
 
 ## Model Routing Rules
 
-模型路由以 [model-routing.yaml](model-routing.yaml) 为准，但默认只是“指令级路由建议”。只有 runner 或 OpenCode 命令输出能验证 `--model <model_id>` 调用成功时，才可写“已请求/已切换到该模型”；只有 OpenCode 状态栏、日志或命令输出能检测真实模型时，才可写“实际使用该模型”。无法检测时必须写“模型使用未能自动验证”。
+模型路由以 [model-routing.yaml](model-routing.yaml) 为准。路由仅为“指令级建议”——具体运行的模型取决于当前 CLI 或 Agent 环境的能力。
 
 关键底线：
 
-- DeepSeek V4 Pro：复杂推理、经营决策、合规资金税务、技术路线、投资分析、最终报告、质量审计。
-- DeepSeek V4 Flash：资料初筛、搜索结果整理、低成本批量搜索、初稿骨架、通用解释。
-- Kimi 2.6：长文档阅读、多文件摘要、政策/合同/招投标/财报/技术文档归纳。
+- 复杂推理、经营决策、合规资金税务、技术路线、投资分析、最终报告、质量审计：建议使用**高能力模型**。
+- 资料初筛、搜索结果整理、低成本批量搜索、初稿骨架、通用解释：建议使用**快速/低成本模型**。
+- 长文档阅读、多文件摘要、政策/合同/招投标/财报/技术文档归纳：建议使用**长上下文模型**。
 
-必须升级到 DeepSeek V4 Pro：
+必须升级到高能力模型：
 
 - 合规、法律、资金、二清、支付、税务。
 - 公司立项、预算、投资决策。
 - 财务测算、估值、收入预测。
 - 最终结论和质量审计。
-- Flash 输出出现明显不确定、逻辑跳跃或数据缺口。
+- 快速模型输出出现明显不确定、逻辑跳跃或数据缺口。
 - 用户要求认真分析、给领导看、用于汇报或用于决策。
 
 禁止：
 
-- Flash 作为最终经营判断模型。
-- Kimi 2.6 单独承担最终结论。
-- 为省成本跳过最终 Pro 审计。
+- 低成本快速模型作为最终经营判断。
+- 长上下文模型单独承担最终结论。
+- 为省成本跳过最终高能力审计。
+
+> 模型使用说明必须基于真实可检测上下文。无法验证真实模型时写“模型使用未能自动验证”。
 
 ## OpenCode Direct Runner
 
-需要从 OpenCode 直接运行 Deep Research 时，使用：
+需要从 CLI 直接运行 Deep Research 时，使用：
 
 ```bash
-Skills/deep-research/scripts/opencode-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR]
+Skills/deep-research/scripts/research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR] [--dry-run] [--parallel|--sequential]
+```
+
+或顺序执行版本：
+
+```bash
+Skills/deep-research/scripts/sequential-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR] [--dry-run]
 ```
 
 示例：
 
 ```bash
-Skills/deep-research/scripts/opencode-research-runner.sh high_quality /tmp/research-task.md /tmp/deep-research-run /Users/xpy/Documents/RichardHub/Git
+Skills/deep-research/scripts/research-runner.sh high_quality /tmp/research-task.md /tmp/deep-research-run /path/to/project --sequential
 ```
 
-该 runner 会按 `mode + agent` 调用 `scripts/model-router.sh`，默认采用分阶段并发：planner 先跑，source 与 long_context 并发，analyst 与 scenario 并发，writer 汇总，reviewer 最后审计。受限环境可用 `--sequential` 回退。详见 [references/opencode-runner.md](references/opencode-runner.md)。
+该 runner 会按 `mode + agent` 调用 `scripts/model-router.sh`，默认采用分阶段并发。受限环境可用 `--sequential` 回退。详见 [references/cli-runner.md](references/cli-runner.md)。
 
 ## Source And Data Rules
 

@@ -130,7 +130,8 @@ def add(
             client = AIClient(config)
             try:
                 data = client.lookup(cleaned_word, context)
-                entry_md = render_vocab_entry(data, context=context)
+                entry_md = render_vocab_entry(data, context=context,
+                                              date_format=config.date_format)
                 store.overwrite_entry(normalized, entry_md)
                 console.print(f'[green]✅ Overwritten entry for "{cleaned_word}"[/green]')
             finally:
@@ -139,7 +140,8 @@ def add(
 
         elif config.duplicate_policy == "append_encounter":
             console.print("[dim]Policy: append_encounter - adding encounter record.[/dim]")
-            encounter_md = render_encounter_entry(context=context)
+            encounter_md = render_encounter_entry(context=context,
+                                                  date_format=config.date_format)
             try:
                 store.append_encounter(normalized, encounter_md)
                 console.print(f'[green]✅ Added encounter record for "{cleaned_word}"[/green]')
@@ -148,12 +150,20 @@ def add(
                 raise typer.Exit(1)
             return
 
+        else:
+            console.print(
+                f"[red]Error: Invalid duplicate_policy '{config.duplicate_policy}'. "
+                f"Must be one of: skip, append_encounter, overwrite[/red]"
+            )
+            raise typer.Exit(1)
+
     # Not a duplicate - look up and add
     client = AIClient(config)
     try:
         console.print("[dim]Querying AI...[/dim]")
         data = client.lookup(cleaned_word, context)
-        entry_md = render_vocab_entry(data, context=context)
+        entry_md = render_vocab_entry(data, context=context,
+                                      date_format=config.date_format)
         store.append_entry(entry_md)
 
         console.print(f'[green]✅ Added "{cleaned_word}" to vocabulary![/green]')
@@ -219,18 +229,24 @@ def clip(
             if config.duplicate_policy == "skip":
                 return
             elif config.duplicate_policy == "append_encounter":
-                encounter_md = render_encounter_entry()
+                encounter_md = render_encounter_entry(date_format=config.date_format)
                 store.append_encounter(normalized, encounter_md)
                 console.print(f'[green]✅ Added encounter record.[/green]')
             elif config.duplicate_policy == "overwrite":
                 data = client.lookup(cleaned)
-                entry_md = render_vocab_entry(data)
+                entry_md = render_vocab_entry(data, date_format=config.date_format)
                 store.overwrite_entry(normalized, entry_md)
                 console.print(f'[green]✅ Overwritten entry.[/green]')
+            else:
+                console.print(
+                    f"[red]Error: Invalid duplicate_policy '{config.duplicate_policy}'. "
+                    f"Must be one of: skip, append_encounter, overwrite[/red]"
+                )
+                raise typer.Exit(1)
         else:
             console.print("[dim]Looking up...[/dim]")
             data = client.lookup(cleaned)
-            entry_md = render_vocab_entry(data)
+            entry_md = render_vocab_entry(data, date_format=config.date_format)
             store.append_entry(entry_md)
             console.print(f'[green]✅ Added "{cleaned}" to vocabulary![/green]')
 
@@ -346,21 +362,30 @@ def batch(
                         skipped += 1
                         continue
                     elif config.duplicate_policy == "append_encounter":
-                        encounter_md = render_encounter_entry()
+                        encounter_md = render_encounter_entry(
+                            date_format=config.date_format)
                         store.append_encounter(normalized, encounter_md)
                         console.print(f"  [yellow]📝 Already exists, added encounter record.[/yellow]")
                         encounters += 1
                         continue
                     elif config.duplicate_policy == "overwrite":
                         data = client.lookup(word)
-                        entry_md = render_vocab_entry(data)
+                        entry_md = render_vocab_entry(data,
+                                                      date_format=config.date_format)
                         store.overwrite_entry(normalized, entry_md)
                         console.print(f"  [green]✅ Overwritten.[/green]")
                         added += 1
                         continue
+                    else:
+                        console.print(
+                            f"  [red]❌ Invalid duplicate_policy "
+                            f"'{config.duplicate_policy}'[/red]"
+                        )
+                        errors += 1
+                        continue
 
                 data = client.lookup(word)
-                entry_md = render_vocab_entry(data)
+                entry_md = render_vocab_entry(data, date_format=config.date_format)
                 store.append_entry(entry_md)
                 console.print(f"  [green]✅ Added.[/green]")
                 added += 1
