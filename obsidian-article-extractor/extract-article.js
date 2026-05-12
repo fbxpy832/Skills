@@ -24,9 +24,16 @@ const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 
 // ── 缓存读写 ──────────────────────────────────────────
 
+function expandHome(p) {
+  if (p.startsWith('~')) {
+    return path.join(os.homedir(), p.slice(1));
+  }
+  return p;
+}
+
 function getCachedVaultPath() {
   if (fs.existsSync(VAULT_CACHE)) {
-    const p = fs.readFileSync(VAULT_CACHE, 'utf-8').trim();
+    const p = expandHome(fs.readFileSync(VAULT_CACHE, 'utf-8').trim());
     if (p && fs.existsSync(p)) return p;
   }
   return '';
@@ -34,7 +41,9 @@ function getCachedVaultPath() {
 
 function saveCachedVaultPath(vaultPath) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
-  fs.writeFileSync(VAULT_CACHE, vaultPath, 'utf-8');
+  const home = os.homedir();
+  const portable = vaultPath.startsWith(home) ? '~' + vaultPath.slice(home.length) : vaultPath;
+  fs.writeFileSync(VAULT_CACHE, portable, 'utf-8');
 }
 
 function getCachedInboxFolder() {
