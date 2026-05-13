@@ -6,7 +6,8 @@
 
 当前环境（OpenCode + macOS Darwin + 中国大陆网络）中：
 
-- **Brave Search API** — ✅ **首选搜索引擎**。通过系统代理可用，API 返回结构化 JSON，中英文搜索质量均好。
+- **Brave Search API** — ✅ 通过系统代理可用，API 返回结构化 JSON，中英文搜索质量均好。通过 `scripts/search.sh` 统一调用。
+- **博查 AI Search API** — ✅ **中文主力搜索引擎**。国内原生 AI 搜索 API，无需代理，中文搜索质量业界最佳。详见 [references/search-backends/bocha.md](references/search-backends/bocha.md)。
 - **Bing CN** — ✅ 替代方案。`webfetch(markdown)` 可用，英文搜索质量好，但中文搜索质量极差。
 - **Google** — ❌ 不可达。DNS 被污染 + 反爬双重封锁；即使通过代理，反爬仍拒绝所有自动化请求。
 - **Baidu** — ❌ HTTP 可达但触发反爬验证，无法获取搜索结果。
@@ -17,12 +18,23 @@
 
 | 搜索引擎 | webfetch | bash curl | 中文质量 | 英文质量 | 优先级 |
 |---------|:-------:|:---------:|:-------:|:-------:|:-----:|
-| **Brave Search API** | ❌ 不支持自定义 Header | ✅ 通过代理 | ✅ 好 | ✅ 好 | **1** |
-| Bing CN | ✅ markdown 格式 | ✅ | ⚠️ 很差 | ✅ 好 | 2 |
+| **博查 AI Search** | ❌ | ✅ 直连（国内服务） | ✅ 最好 | ⚠️ 可用 | **1（中文）** |
+| **Exa 语义搜索** | ❌ | ✅ 直连 | ⚠️ 有限 | ✅ 最好（语义） | **1（英文）** |
+| **Brave Search API** | ❌ 不支持自定义 Header | ✅ 通过代理 | ✅ 好 | ✅ 好 | **2** |
+| Bing CN | ✅ markdown 格式 | ✅ | ⚠️ 很差 | ✅ 好 | 3 |
 | Google | ❌ | ❌ | — | — | — |
 | Baidu | ❌ | ❌ 反爬 | — | — | — |
 | DuckDuckGo | ❌ | ❌ | — | — | — |
 | Sogou | ❌ HTMLRewriter | ❌ | — | — | — |
+
+## 并发搜索（--parallel）
+
+`search.sh --parallel` 模式下，中文查询并发运行博查+Brave，英文查询并发运行 Exa+Brave。结果合并输出，任一引擎失败不影响另一引擎。
+
+```
+scripts/search.sh "人工智能 2026" --parallel  # Bocha + Brave 并发
+scripts/search.sh "LLM research" --parallel   # Exa + Brave 并发
+```
 
 ## Brave Search API（首选搜索方案）
 
@@ -36,13 +48,26 @@ BSAy9QIBpTA4saK93z3M-21Cg9kTKrK
 
 Brave Search API 必须通过**系统代理 + bash curl** 调用。`webfetch` 工具不支持自定义 HTTP Header，无法直接调用 Brave API。
 
-**完整调用模板：**
+**推荐使用统一搜索脚本（替代手写 curl）：**
 
 ```bash
-export https_proxy=http://127.0.0.1:7897
-export http_proxy=http://127.0.0.1:7897
+# 自动语言检测 + 路由
+scripts/search.sh "查询关键词"
 
-curl -s --connect-timeout 10 \
+# 强制指定后端
+scripts/search.sh "查询关键词" --backend brave --lang en --count 10
+
+# 详细用法
+scripts/search.sh --help
+```
+
+**手动调用（仅在脚本不可用时）：**
+
+```bash
+export https_proxy=http://127.0.0.1:7890
+export http_proxy=http://127.0.0.1:7890
+
+curl -s --connect-timeout 15 \
   -H "X-Subscription-Token: BSAy9QIBpTA4saK93z3M-21Cg9kTKrK" \
   "https://api.search.brave.com/res/v1/web/search?q=URL_ENCODED_QUERY&count=10"
 ```
@@ -93,34 +118,38 @@ JSON 结构关键字段：
 
 ## 系统代理配置
 
-本环境（macOS）检测到系统级 SOCKS/HTTP 代理在 `127.0.0.1:7897`，用于绕过网络封锁访问外部 API。
+本环境（macOS）检测到系统级 SOCKS/HTTP 代理，用于绕过网络封锁访问外部 API。默认代理端口 `7890`（与 `opencode-research-runner.sh` 保持一致）。
 
 **重要行为差异：**
 
 | 工具 | 是否走代理 | 效果 |
 |------|:---------:|------|
 | `webfetch` | ❌ 不走代理 | 直接连接，仅能访问国内可达站点（Bing CN / Baidu 首页 / 政府网站） |
-| `bash curl` | ⚠️ 默认不走 | 需手动设置 `https_proxy=http://127.0.0.1:7897 http_proxy=http://127.0.0.1:7897 curl ...` |
-| `bash curl` + 代理 | ✅ 走代理 | 可访问 Brave Search API（首选）、Bing、部分国际站点 |
+| `bash curl` | ⚠️ 默认不走 | 需手动设置 `https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890 curl ...` |
+| `bash curl` + 代理 | ✅ 走代理 | 可访问 Brave Search API、Bing、部分国际站点 |
+| `scripts/search.sh` | ✅ 自动检测 | 自动检测代理端口并设置环境变量 |
 
 **建议**：在 bash 会话开始时设置代理变量，避免每条命令重复：
 
 ```bash
-export https_proxy=http://127.0.0.1:7897
-export http_proxy=http://127.0.0.1:7897
+export https_proxy=http://127.0.0.1:7890
+export http_proxy=http://127.0.0.1:7890
 ```
 
 ## 推荐搜索方案（按优先级排列）
 
-### Scheme A — Brave Search API（首选，中英文均可用）
+### Scheme A — Brave Search API（英文主力，已集成到 search.sh）
 
-通用模板：
+> **推荐**：使用 `scripts/search.sh "query" --backend brave` 替代手写 curl。
+> 详见 [scripts/search.sh](../../scripts/search.sh)。
+
+手动调用模板：
 
 ```bash
-export https_proxy=http://127.0.0.1:7897
-export http_proxy=http://127.0.0.1:7897
+export https_proxy=http://127.0.0.1:7890
+export http_proxy=http://127.0.0.1:7890
 
-curl -s --connect-timeout 10 \
+curl -s --connect-timeout 15 \
   -H "X-Subscription-Token: BSAy9QIBpTA4saK93z3M-21Cg9kTKrK" \
   "https://api.search.brave.com/res/v1/web/search?q=KEYWORD&count=10" | \
   python3 -c "
@@ -179,6 +208,98 @@ q=China+smart+parking+prepaid+card+regulation+2025
 ```
 
 然后从英文页面的引用中发现权威中文来源 URL，再用 webfetch 抓取。
+
+### Scheme E — 博查 AI Search API（中文主力，新增）
+
+> **推荐**：使用 `scripts/search.sh "中文查询"` 自动路由到博查。
+> 完整文档：[references/search-backends/bocha.md](references/search-backends/bocha.md)。
+
+博查是国内首个 AI 原生的搜索引擎 API，返回 AI 优化的长摘要（500+ 字符），中文搜索质量业界最佳。**无需代理，直连国内服务**。
+
+**前置条件**：需注册免费 API Key（[open.bochaai.com](https://open.bochaai.com/)），设置环境变量：
+
+```bash
+export BOCHA_API_KEY="your-api-key-here"
+```
+
+**通过 search.sh 调用（推荐）**：
+
+```bash
+scripts/search.sh "智慧停车 城市治理 政策 2025"
+scripts/search.sh "胖东来 郑州店 开业" --freshness oneMonth
+```
+
+**手动调用**：
+
+```bash
+curl -s --connect-timeout 15 \
+  -H "Authorization: Bearer $BOCHA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"智慧停车 城市治理","count":10,"freshness":"noLimit"}' \
+  "https://api.bochaai.com/v1/web-search" | \
+  python3 -c "
+import json,sys
+data = json.load(sys.stdin)
+for p in data.get('data',{}).get('pages',[]):
+    print(f'[{p.get(\"language\",\"zh\")}] {p.get(\"title\",\"\")}')
+    print(f'  {p.get(\"url\",\"\")}')
+    print(f'  site: {p.get(\"siteName\",\"\")}  date: {p.get(\"dateLastCrawled\",\"\")[:10]}')
+    print(f'  {p.get(\"summary\",\"\")[:200]}')
+    print()
+"
+```
+
+- 适用于：中文关键词、政策法规、行业动态、中国企业/市场信息
+- 限制：需要 API Key（免费注册）；英文搜索质量不如 Brave
+- 频率：免费用户通常 100-500 次/天，以控制台显示为准
+
+### Scheme F — Exa 语义搜索 API（英文语义主力，新增）
+
+> **推荐**：使用 `scripts/search.sh "English query"` 自动路由。
+> 完整文档：[references/search-backends/exa.md](references/search-backends/exa.md)。
+
+Exa 是基于嵌入向量的语义搜索引擎，按语义理解返回最相关结果，而非关键词匹配。特别适合：
+- 学术论文搜索（`category: research paper`）
+- 概念性/模糊查询（语义匹配优于关键词）
+- 公司/人物信息发现（`category: company/people`）
+- 深度研究（`type: deep`）
+
+免费额度 1,000 次/月，定价 $7/千次（含内容提取）。
+
+**通过 search.sh 调用**：
+
+```bash
+scripts/search.sh "latest LLM research" --lang en        # 自动路由（有Key时优先Exa）
+scripts/search.sh "transformer optimization" --backend exa --lang en  # 强制Exa
+scripts/search.sh "AI safety" --parallel --lang en       # Exa + Brave 并发
+```
+
+## search.sh 统一搜索脚本
+
+新增 `scripts/search.sh` 统一搜索入口，替代手写 curl 命令：
+
+```
+用法：
+  search.sh "查询"                           # 自动语言检测+路由
+  search.sh "查询" --lang zh                 # 强制中文（走博查）
+  search.sh "查询" --lang en --backend brave # 强制英文走 Brave
+  search.sh "查询" --count 5 --no-cache      # 5条结果，跳过缓存
+  search.sh "查询" --dry-run                 # 预览即将执行的搜索
+  search.sh --help                           # 完整帮助
+```
+
+特性：
+- 自动语言检测（中文→博查，英文→Exa/Brave）
+- 多引擎并发（`--parallel`，博查+Brave 或 Exa+Brave 同时搜索）
+- 引擎 fallback（博查失败→Brave，Exa失败→Brave，Brave失败→博查/Exa）
+- 会话级缓存（MD5 键，/tmp/opencode-brave-cache.json）
+- 搜索计数器集成（/tmp/opencode-brave-count）
+- 指数退避重试（最多 3 次）
+
+### Scheme F — Exa 语义搜索 API（英文语义主力，新增）
+
+> **推荐**：使用 `scripts/search.sh "English query"` 自动路由（有 EXA_API_KEY 时优先 Exa）。
+> 完整文档：[references/search-backends/exa.md](references/search-backends/exa.md)。
 
 ## Phase 2 搜索执行强制规则
 
@@ -371,7 +492,7 @@ echo $((count + 1)) > "$COUNT_FILE"
 
 ```
 # Phase 2 开始
-1. export https_proxy=http://127.0.0.1:7897
+1. export https_proxy=http://127.0.0.1:7890
 2. echo "0" > /tmp/opencode-brave-count
 3. 列出所有高优先级搜索词（≤70%预算 = ≤10次）
 4. 对每个词：先查缓存 → 未命中则搜索 → 写入缓存 → 更新计数
@@ -381,10 +502,12 @@ echo $((count + 1)) > "$COUNT_FILE"
 ```
 
 ### 搜索尝试顺序
-   - **第 1 步**：Scheme A — Brave Search API（必须执行）
-   - **第 2 步**：如果 Brave 搜索结果不足（<5 条相关结果），补充 Scheme D
-   - **第 3 步**：如果仍然不足，识别结果中出现的权威来源 URL，用 Scheme C 直接抓取
-   - **第 4 步**：以上全部失败，才可标记"搜索失败"，记录 source_failure_log
+   - **第 1 步**：Scheme E（博查）或 Scheme A（Brave）— 根据 `search.sh` 语言路由自动选择
+   - **第 2 步**：如果首选搜索结果不足（<5 条相关结果），自动 fallback 到另一引擎
+   - **第 3 步**：如果仍然不足，补充 Scheme D（英文发现中文来源）
+   - **第 4 步**：识别结果中出现的权威来源 URL，用 Scheme C 直接抓取
+   - **第 5 步**：Scheme B（Bing）作为最后兜底
+   - **第 6 步**：以上全部失败，才可标记"搜索失败"，记录 source_failure_log
 
 ### 结果判断标准
    - **成功**：搜索结果中 ≥5 条与研究问题直接相关
@@ -402,6 +525,55 @@ Phase 2 执行后必须在内部记录：
    - 搜索成功/部分成功/失败 + 原因
    - 本次搜索消耗次数（计数器读数）
    - 下一步动作
+
+## MCP 搜索协议支持
+
+除了通过 `search.sh` 脚本直接调用搜索 API 外，Deep Research 还可以通过 **MCP（Model Context Protocol）** 接入第三方搜索服务。OpenCode 原生支持 MCP 协议，无需额外安装 SDK。
+
+### 可接入的 MCP 搜索服务
+
+| MCP Server | 安装方式 | 提供的能力 |
+|-----------|---------|-----------|
+| **exa-mcp-server** | `npx -y mcp-remote https://mcp.exa.ai/mcp` | Exa 语义搜索 + 深度研究 + 代码搜索 |
+| **tavily-mcp** | `npx -y @tavily/mcp` | Tavily AI 优化搜索 + 智能内容提取 |
+| **apify-mcp-server** | URL: `https://mcp.apify.com` | 2000+ 爬虫（社交媒体/地图/电商/搜索） |
+| **browserbase-mcp** | `npx @browserbasehq/mcp-server-browserbase` | 浏览器自动化（JS页面/截图/表单填写） |
+
+### 配置方式
+
+在 OpenCode 的 MCP 配置中添加（具体路径取决于 OpenCode 版本）：
+
+```json
+{
+  "mcpServers": {
+    "exa": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://mcp.exa.ai/mcp"],
+      "env": { "EXA_API_KEY": "${EXA_API_KEY}" }
+    },
+    "tavily": {
+      "command": "npx",
+      "args": ["-y", "@tavily/mcp"],
+      "env": { "TAVILY_API_KEY": "${TAVILY_API_KEY}" }
+    }
+  }
+}
+```
+
+### 与传统搜索的互补
+
+| 场景 | 推荐方式 |
+|------|---------|
+| 结构化研究（来源分级、预算管控） | `search.sh`（Script 方式） |
+| 快速单个搜索 | `search.sh`（Script 方式） |
+| 浏览器自动化/JS页面 | MCP browserbase/apify |
+| 社交媒体数据抓取 | MCP apify |
+| Agent 工具链集成 | MCP + Agent 框架 |
+
+## SearXNG 自建搜索（Scheme G）
+
+如需零 API 成本的无限搜索，可自建 SearXNG 实例。详见：
+- [references/search-backends/searxng-deploy.md](references/search-backends/searxng-deploy.md)
 
 ## 搜索关键词设计规范
 

@@ -19,8 +19,16 @@ done
 if [ -z "$TASK_FILE" ]; then
   echo "ERROR: Missing task file."
   echo "Usage: opencode-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR] [--dry-run] [--parallel|--sequential]"
+  echo "       TASK_FILE can be '-' to read from stdin"
   echo "Example: opencode-research-runner.sh high_quality /tmp/task.md /tmp/research-run /Users/xpy/Documents/RichardHub/Git --parallel"
+  echo "         echo 'task description' | opencode-research-runner.sh high_quality - --parallel"
   exit 1
+fi
+
+if [ "$TASK_FILE" = "-" ]; then
+  TASK_FILE=$(mktemp /tmp/deep-research-task-XXXXXX)
+  cat > "$TASK_FILE"
+  trap "rm -f '$TASK_FILE'" EXIT
 fi
 
 if [ ! -f "$TASK_FILE" ]; then
@@ -78,7 +86,7 @@ if [ "$DRY_RUN" != "1" ]; then
 fi
 
 # Proxy setup — only set if already in environment or port 7890 is reachable
-if [ -n "$HTTP_PROXY" ] || [ -n "$HTTPS_PROXY" ]; then
+if [ -n "${HTTP_PROXY:-}" ] || [ -n "${HTTPS_PROXY:-}" ]; then
   # Already set by environment, don't override
   :
 elif (command -v nc && nc -z -w 1 127.0.0.1 7890 2>/dev/null) || \
