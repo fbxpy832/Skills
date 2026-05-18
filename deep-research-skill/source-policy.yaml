@@ -1,0 +1,311 @@
+# Source Policy
+# 定义 Deep Research Skill 的数据来源类型、等级、任务映射和失败策略
+
+# ============================================================
+# 来源类型
+# ============================================================
+
+source_types:
+
+  external_authoritative:
+    description: "政府官网、监管机构、交易所公告、上市公司公告、法规原文、标准文件、统计年鉴、官方白皮书、企业官网正式披露、招股书、年报/季报、学术论文、权威会议论文、行业协会报告、公开招投标文件"
+    allowed_for_core_claims: true
+    default_level: "S/A"
+    must_include_for:
+      - compliance
+      - law
+      - policy
+      - finance
+      - investment_analysis
+      - government_report
+
+  external_media:
+    description: "主流财经媒体、地方媒体、行业媒体、券商研报、咨询机构报告、企业新闻稿、产品官网、技术博客、会议演讲材料"
+    allowed_for_core_claims: conditional
+    conditions:
+      - "券商研报、行业协会报告、咨询机构报告可作为 A/B 级辅助，但需标注视角偏差（如券商对目标公司持股份额）"
+      - "主流财经媒体可作为 B 级，核心结论需 2+ 独立媒体交叉验证"
+      - "企业新闻稿和产品官网属营销材料，仅作为 C 级线索"
+      - "行业媒体单篇报道不可代表行业共识"
+      - "所有媒体来源均需标注发布时间，超过 2 年的行业报道不可作为当前行业状态依据"
+    default_level: "B/C"
+
+  local_vault:
+    description: "本地 Obsidian Vault / RichardHub 资料：公司历史报告、项目方案、用户笔记、会议纪要、技术调研、业务材料"
+    path: "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub"
+    allowed_for_core_claims: conditional
+    conditions:
+      - "标注'内部口径，需以财务或系统后台核验为准'"
+      - "关注文件日期，不得把旧数据当作当前数据"
+      - "不得把本地笔记当作外部权威来源"
+      - "不得把历史报告当作最新事实"
+    note: "用于补充用户内部业务背景和上下文，不自动视为权威事实"
+
+  local_wiki:
+    description: "本地 llm-wiki / karpathy wiki 技术知识库：AI、LLM、深度学习、Agent、Transformer、端侧AI等通用技术原理"
+    paths:
+      - "~/Documents/karpathy-wiki"
+      - "~/Documents/llm-wiki"
+      - "~/Documents/RichardHub/Git/karpathy-wiki"
+      - "~/Documents/RichardHub/Git/llm-wiki"
+    allowed_for_core_claims: conditional
+    conditions:
+      - "用于技术原理解释和术语理解"
+      - "不得作为最新产业事实、最新论文进展、公司产品状态的唯一来源"
+      - "涉及公司动态、产品状态、论文结论时需外部核验"
+      - "技术路线报告中可用于解释原理，但结论仍需结合最新外部资料"
+    note: "技术原理知识库，非最新事实来源"
+
+  uploaded_files:
+    description: "用户当前会话上传的文件：Markdown、PDF、Word、Excel、图片、报告、合同、表格、截图"
+    allowed_for_core_claims: conditional
+    conditions:
+      - "当前任务的最高优先级上下文"
+      - "若用户明确要求基于附件，优先读取附件"
+      - "附件中的数据仍要区分'文件内声称'与'已核验事实'"
+    note: "当前会话上下文，文件内数据未必经核验"
+
+  model_reasoning:
+    description: "AI 基于已有资料进行的推理判断"
+    allowed_for_core_claims: false
+    conditions:
+      - "不得伪装成事实来源"
+      - "必须与事实来源分开标注"
+      - "涉及关键决策时必须说明假设条件和置信度"
+    note: "分析工具，非事实依据"
+
+# ============================================================
+# 来源等级
+# ============================================================
+
+source_levels:
+
+  S:
+    label: "最高可信"
+    items:
+      - "政府官网"
+      - "监管机构官网"
+      - "法规原文"
+      - "交易所公告"
+      - "上市公司正式公告"
+      - "年报/季报/招股书"
+      - "国家统计局/地方统计局"
+      - "标准文件"
+      - "权威学术会议/期刊论文（ISSCC/VLSI/Nature/Science 等）"
+      - "官方技术文档"
+    supports: "核心结论"
+
+  A:
+    label: "高可信"
+    items:
+      - "行业协会报告"
+      - "权威咨询机构报告"
+      - "头部券商研报"
+      - "企业官网正式产品页"
+      - "官方白皮书"
+      - "公开招投标文件"
+      - "专利数据库"
+      - "大学/研究机构公开报告"
+    supports: "重要结论，重大数据建议交叉验证"
+
+  B:
+    label: "中等可信"
+    items:
+      - "主流财经媒体"
+      - "地方官方媒体"
+      - "行业媒体"
+      - "企业新闻稿"
+      - "产品新闻"
+      - "会议演讲"
+      - "技术博客"
+      - "开源项目 README（活跃项目）"
+    supports: "作为事实线索或辅助论据，核心结论需交叉验证"
+
+  C:
+    label: "低可信辅助"
+    items:
+      - "自媒体"
+      - "知乎专栏"
+      - "博客"
+      - "论坛"
+      - "公众号文章"
+      - "社群信息"
+      - "未经核验的行业传闻"
+    supports: "只能用于启发、补充、线索，不得单独支撑核心判断"
+
+  D:
+    label: "不可作为事实依据"
+    items:
+      - "AI 自身知识（模型训练数据中的记忆）"
+      - "经验估算（未经实际数据校准）"
+      - "用户未核验口径"
+      - "无法确认出处的数据"
+      - "二手转述"
+      - "无时间戳信息"
+    supports: "只能作为假设或待核验项，不得写成事实"
+
+# ============================================================
+# 等级使用规则
+# ============================================================
+
+level_usage_rules:
+  - "核心结论必须尽量由 S/A/B 级来源支撑"
+  - "C 级来源只能用于启发、补充、线索，不得单独支撑核心判断"
+  - "D 级来源只能作为假设或待核验项，不得写成事实"
+  - "所有关键数据必须标注来源等级"
+  - "涉及政策、法律、监管、资金、财务、上市公司、投资判断，必须优先 S/A 级来源"
+  - "如果只有 C/D 级来源，必须在结论中降低置信度"
+  - "如果无可靠来源，不得虚构，应写'缺少可靠公开来源，需进一步核验'"
+
+# ============================================================
+# 任务类型 → 数据源优先级
+# ============================================================
+
+task_source_priority:
+
+  business_decision:
+    priority_order:
+      - uploaded_files
+      - local_vault
+      - external_authoritative
+      - external_media
+      - model_reasoning
+    note: "必须区分内部口径、外部公开事实、AI 推理判断、待核验数据"
+
+  government_report:
+    priority_order:
+      - external_authoritative
+      - local_vault
+      - uploaded_files
+      - external_media
+      - model_reasoning
+    note: "优先使用政府文件、政策法规、主管部门公开信息"
+    forbidden:
+      - "用自媒体材料支撑核心结论"
+      - "使用夸张营销话术"
+      - "将未经核验的内部数据直接写成官方事实"
+
+  technical_route:
+    priority_order:
+      - local_wiki
+      - external_authoritative
+      - external_media
+      - uploaded_files
+      - local_vault
+      - model_reasoning
+    note: "local_wiki 用于技术原理，不用于最新事实判断。最新论文和产品进展必须通过外部来源核验"
+    required_sources:
+      - "IEEE Xplore"
+      - "arXiv"
+      - "ACM Digital Library"
+      - "ISSCC/IEDM/Hot Chips"
+      - "公司官网"
+      - "专利数据库"
+
+  investment_analysis:
+    priority_order:
+      - external_authoritative
+      - external_media
+      - uploaded_files
+      - local_vault
+      - model_reasoning
+    note: "必须优先使用交易所公告、年报、季报、招股书、监管问询函"
+    forbidden:
+      - "用股吧、论坛、自媒体作为核心依据"
+      - "用未经核验的传闻支撑买卖判断"
+      - "给出绝对化投资结论"
+    required_disclaimer: "不构成投资建议"
+
+  general_research:
+    priority_order:
+      - external_authoritative
+      - local_wiki
+      - external_media
+      - model_reasoning
+    note: "解释概念时可结合 local_wiki；涉及当前状态和最新发展时必须外部核验"
+
+# ============================================================
+# Source Planning 字段
+# ============================================================
+
+source_plan_fields:
+  - task_type
+  - required_sources
+  - optional_sources
+  - forbidden_or_weak_sources
+  - source_risk
+  - verification_needs
+  - freshness_requirement
+  - local_source_need
+  - uploaded_file_need
+  - fallback_policy
+
+# ============================================================
+# 来源失败处理
+# ============================================================
+
+failure_policy:
+
+  high_quality_requires_external_verification: true
+
+  downgrade_on_search_failure: true
+
+  require_failure_log: true
+
+  downgrade_rules:
+    - trigger: "外部搜索失败、API 超时、网页无法访问、来源不足"
+      action: "自动降级为'离线初稿'或'待联网核验版'"
+      audit_max: "CONDITIONAL_PASS"
+      filename_suffix: "-离线初稿"
+
+    - trigger: "high_quality 模式 + 搜索全部失败"
+      action: "不得标记为正式高质量报告"
+      report_header: "本报告因外部搜索/来源抓取失败，部分内容基于本地资料或模型知识生成，关键结论需联网核验后方可用于正式决策。"
+
+  fallback_response:
+    - "记录 source_failure_log"
+    - "标注失败来源和影响范围"
+    - "列出需人工补充的来源"
+    - "降级审计等级"
+    - "文件名加后缀"
+
+# ============================================================
+# 来源呈现要求
+# ============================================================
+
+report_source_requirements:
+
+  appendix_sections:
+    - "来源清单与来源等级（表格）"
+    - "数据局限性说明"
+    - "待补充核验资料清单"
+
+  source_table_fields:
+    - "编号"
+    - "来源名称"
+    - "来源类型"
+    - "来源等级"
+    - "发布时间/获取时间"
+    - "支撑内容"
+    - "局限性"
+    - "链接或本地路径"
+
+  data_limitation_must_include:
+    - "哪些数据来自外部公开来源"
+    - "哪些数据来自本地 Vault"
+    - "哪些来自本地 Wiki"
+    - "哪些是用户提供"
+    - "哪些是模型推理"
+    - "哪些仍需核验"
+
+  delivery_summary_source_fields:
+    - "本次任务类型"
+    - "使用的数据来源（按类型）"
+    - "是否启用本地 Vault"
+    - "是否启用本地 Wiki"
+    - "是否启用外部搜索"
+    - "外部搜索状态"
+    - "来源审计等级"
+    - "是否存在来源失败"
+    - "哪些关键结论需要人工核验"
+    - "报告可用性"
