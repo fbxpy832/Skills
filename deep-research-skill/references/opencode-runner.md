@@ -30,7 +30,7 @@ Skills/deep-research-skill/scripts/opencode-research-runner.sh high_quality /tmp
 
 - `MODE`: `balanced`, `cost_saving`, `high_quality`, `long_context`, or `draft_fast`.
 - `TASK_FILE`: Markdown or text file containing the user research request.
-- `OUTPUT_DIR`: optional run directory. Defaults to `.deep-research-runs/YYYYMMDD-HHMMSS`.
+- `OUTPUT_DIR`: optional run directory. Defaults to `${DEEP_RESEARCH_OUTPUT_DIR:-.deep-research-runs}/YYYYMMDD-HHMMSS`.
 - `PROJECT_DIR`: optional working directory. Defaults to current directory.
 - `--parallel`: staged parallel execution. This is the default.
 - `--sequential`: run the same agents one by one for debugging or constrained environments.

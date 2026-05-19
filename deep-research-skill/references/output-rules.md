@@ -4,7 +4,7 @@
 
 默认输出 Markdown 文件。
 
-默认保存目录：
+默认保存目录由首次 setup 写入 `DEEP_RESEARCH_OUTPUT_DIR`：
 
 ```text
 ${DEEP_RESEARCH_OUTPUT_DIR:-~/Deep-Research-Outputs/}

@@ -115,7 +115,8 @@ export_provider_env_for_model() {
 
 if [ -z "$OUTPUT_DIR" ] || [ "$OUTPUT_DIR" = "--dry-run" ] || [ "$OUTPUT_DIR" = "--parallel" ] || [ "$OUTPUT_DIR" = "--sequential" ]; then
   RUN_ID="$(date +%Y%m%d-%H%M%S)"
-  OUTPUT_DIR="$PROJECT_DIR/.deep-research-runs/$RUN_ID"
+  OUTPUT_BASE="${DEEP_RESEARCH_OUTPUT_DIR:-$PROJECT_DIR/.deep-research-runs}"
+  OUTPUT_DIR="$OUTPUT_BASE/$RUN_ID"
 fi
 
 mkdir -p "$OUTPUT_DIR/prompts" "$OUTPUT_DIR/outputs" "$OUTPUT_DIR/logs"

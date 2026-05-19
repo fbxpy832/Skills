@@ -22,6 +22,7 @@ setup 会在 `~/.config/deep-research-skill/` 下生成本机私有配置。该�
 - 接入点地址：每个来源可配置 `base_url`。
 - 凭证：支持 API key 或 token plan key。本 skill 不要求把凭证写入仓库。
 - 搜索工具 key：提示配置 `BRAVE_API_KEY`、`BOCHA_API_KEY`、`EXA_API_KEY`，用于 `scripts/search.sh`。
+- 默认输出目录：提示配置 `DEEP_RESEARCH_OUTPUT_DIR`，报告和 runner 产物默认写入该目录。
 
 生成的 `config.env` 会被 `scripts/model-router.sh`、`scripts/opencode-research-runner.sh`、`scripts/search.sh` 以及其他宿主适配器读取。setup 可选调用 `scripts/install-opencode-providers.sh`，把 provider 元数据和模型列表合并进 OpenCode 配置；默认不写任何宿主配置。API key 仍只保存在本机私有 `config.env`，runner 或宿主适配器在调用对应 agent 前临时导出。若未配置，仍按内置默认模型路由运行，但搜索工具必须使用用户自己的 API key；不得依赖他人或示例 key。
 
@@ -32,6 +33,7 @@ setup 会在 `~/.config/deep-research-skill/` 下生成本机私有配置。该�
 - **通用配置层**：`~/.config/deep-research-skill/config.env`、`providers.env`、`model-routing.yaml`。
 - **通用搜索层**：`scripts/search.sh`，由 `BRAVE_API_KEY`、`BOCHA_API_KEY`、`EXA_API_KEY` 驱动。
 - **通用模型路由层**：`scripts/model-router.sh MODE AGENT`，返回 `provider/model`。
+- **通用输出层**：`DEEP_RESEARCH_OUTPUT_DIR`，由 setup 初始化，所有宿主默认写入该目录。
 - **宿主适配层**：OpenCode、Codex、Claude Code、CloudCode、GUI、TU/terminal runner 可各自读取同一配置，并负责真实模型调用与日志证据。
 
 宿主只能把 `provider/model` 写成“请求模型”或“路由建议”。只有对应宿主日志、UI 状态、命令输出或 API 响应能证明真实模型时，才可写“实际使用模型”。
@@ -270,7 +272,7 @@ Skills/deep-research-skill/scripts/opencode-research-runner.sh high_quality /tmp
 
 ## File Output
 
-默认保存到：
+默认保存到 setup 配置的目录：
 
 `${DEEP_RESEARCH_OUTPUT_DIR:-~/Deep-Research-Outputs/}`
 
