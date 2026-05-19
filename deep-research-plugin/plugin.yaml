@@ -1,0 +1,23 @@
+name: deep-research-plugin
+version: "1.0.0"
+description: Multi-host enterprise Deep Research protocol layer
+
+skills:
+  - path: SKILL.md
+
+scripts:
+  setup: scripts/setup.sh
+  search: scripts/search.sh
+  model-router: scripts/model-router.sh
+  generic-runner: scripts/generic-research-runner.sh
+  opencode-runner: scripts/opencode-research-runner.sh
+
+env:
+  - BRAVE_API_KEY
+  - BOCHA_API_KEY
+  - EXA_API_KEY
+  - DEEP_RESEARCH_OUTPUT_DIR
+  - DEEP_RESEARCH_AGENTS
+
+providers:
+  model-router: scripts/model-router.sh

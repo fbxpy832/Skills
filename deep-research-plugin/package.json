@@ -1,0 +1,27 @@
+{
+  "name": "deep-research-plugin",
+  "version": "1.0.0",
+  "description": "Multi-host enterprise Deep Research protocol — a composable research decision workflow for business, government, technical, and investment analysis",
+  "type": "module",
+  "main": "SKILL.md",
+  "files": [
+    "SKILL.md",
+    "plugin.yaml",
+    "scripts/",
+    "references/",
+    "eval/",
+    "templates/",
+    "source-policy.yaml",
+    "model-routing.yaml"
+  ],
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "deep-research",
+    "research",
+    "analysis",
+    "enterprise"
+  ],
+  "author": "",
+  "license": "MIT"
+}

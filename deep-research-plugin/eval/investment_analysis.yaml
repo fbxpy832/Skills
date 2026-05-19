@@ -1,0 +1,25 @@
+# Investment Analysis — Eval Task
+task_type: investment_analysis
+title: "智慧停车行业上市公司竞争力比较分析"
+description: >
+  对比分析A股智慧停车相关上市公司的财务表现、
+  市场地位、技术壁垒和成长性，形成投资分析框架。
+  需要检索年报、季报和券商研报。
+mode: high_quality
+expected_agents:
+  - planner_agent
+  - source_agent
+  - analyst_agent
+  - scenario_agent
+  - writer_agent
+  - reviewer_agent
+expected_outputs:
+  - run-summary.md
+  - execution-context.md
+  - source_failure_log.md
+  - events.ndjson
+success_criteria:
+  - model_routing_has_all_agents
+  - source_failure_log_exists
+  - events_contain_run_started
+  - events_contain_run_completed
