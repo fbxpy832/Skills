@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODE="${1:-balanced}"
-TASK_FILE="${2:-}"
-OUTPUT_DIR="${3:-}"
-PROJECT_DIR="${4:-$(pwd)}"
 DRY_RUN="${DRY_RUN:-0}"
 EXECUTION_MODE="${DEEP_RESEARCH_EXECUTION_MODE:-parallel}"
+POSITIONAL_ARGS=()
 
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN="1" ;;
     --parallel) EXECUTION_MODE="parallel" ;;
     --sequential) EXECUTION_MODE="sequential" ;;
+    *) POSITIONAL_ARGS+=("$arg") ;;
   esac
 done
+
+MODE="${POSITIONAL_ARGS[0]:-balanced}"
+TASK_FILE="${POSITIONAL_ARGS[1]:-}"
+OUTPUT_DIR="${POSITIONAL_ARGS[2]:-}"
+PROJECT_DIR="${POSITIONAL_ARGS[3]:-$(pwd)}"
 
 if [ -z "$TASK_FILE" ]; then
   echo "ERROR: Missing task file."
@@ -55,7 +58,12 @@ if [ ! -x "$ROUTER" ]; then
 fi
 
 provider_var_name() {
-  echo "$1" | tr '[:lower:]-./ ' '[:upper:]____' | tr -cd 'A-Z0-9_'
+  local result
+  result="$(echo "$1" | tr '[:lower:]-./ ' '[:upper:]____' | tr -cd 'A-Z0-9_')"
+  if [ -z "$result" ]; then
+    result="PROVIDER"
+  fi
+  echo "$result"
 }
 
 provider_from_model() {
@@ -127,7 +135,11 @@ if [ -z "$OPENCODE_BIN" ]; then
   fi
 fi
 
-export HOME="${HOME:-/Users/xpy}"
+if [ -z "${HOME:-}" ]; then
+  echo "ERROR: HOME is not set in environment. Cannot determine user home directory."
+  exit 1
+fi
+export HOME
 export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
 
@@ -212,15 +224,34 @@ collect_outputs() {
   done
 }
 
+agent_to_phase() {
+  case "$1" in
+    planner_agent)      echo "Phase_2_资料搜索" ;;
+    source_agent)       echo "Phase_2_资料搜索" ;;
+    long_context_agent) echo "Phase_2_资料搜索" ;;
+    analyst_agent)      echo "Phase_3_事实核验" ;;
+    scenario_agent)     echo "Phase_5_情景测算" ;;
+    writer_agent)       echo "Phase_6_报告写作" ;;
+    reviewer_agent)     echo "Phase_7_质量审计" ;;
+    *)                  echo "全文" ;;
+  esac
+}
+
 append_source_failure_log() {
   local agent="$1"
-  local failure_type="$2"
-  local affected_scope="$3"
-  local fallback_handling="${4:-}"
-  local failed_source_type="${5:-}"
-  local affected_conclusions="${6:-}"
-  local fallback_source_level="${7:-}"
-  local failure_time
+  local failed_task="${2:-}"
+  local failure_type="${3:-}"
+  local affected_scope="${4:-}"
+  local fallback_handling="${5:-}"
+  local failed_source_type="${6:-}"
+  local failed_source_detail="${7:-}"
+  local affected_conclusions="${8:-}"
+  local fallback_source_level="${9:-}"
+  local confidence_impact="${10:-reduced}"
+  local report_usability_marking="${11:-待核验}"
+  local audit_grade_cap="${12:-CONDITIONAL_PASS}"
+  local failure_stage failure_time
+  failure_stage="$(agent_to_phase "$agent")"
   failure_time="$(date '+%Y-%m-%d %H:%M:%S')"
 
   cat >> "$source_failure_log_file" <<EOF
@@ -230,16 +261,18 @@ append_source_failure_log() {
 \`\`\`yaml
 source_failure_log:
   - failure_time: "$failure_time"
-    failed_stage: "$agent"
+    failed_task: "$failed_task"
     failed_source_type: "$failed_source_type"
+    failed_source_detail: "$failed_source_detail"
     failure_type: "$failure_type"
+    failure_stage: "$failure_stage"
     affected_scope: "$affected_scope"
     affected_conclusions: "$affected_conclusions"
     fallback_handling: "$fallback_handling"
     fallback_source_level: "$fallback_source_level"
-    confidence_impact: "reduced"
-    report_usability_marking: "待核验"
-    audit_grade_cap: "CONDITIONAL_PASS"
+    confidence_impact: "$confidence_impact"
+    report_usability_marking: "$report_usability_marking"
+    audit_grade_cap: "$audit_grade_cap"
     required_manual_sources:
       - 补充 S/A/B 级来源并记录发布时间、获取时间和统计口径
     suggested_databases_or_keywords:
@@ -393,9 +426,23 @@ run_agent() {
 
     if ! (
       cd "$PROJECT_DIR"
-      "$OPENCODE_BIN" run --model "$model" "$(cat "$prompt_file")"
+      if [ -n "${OPENCODE_TIMEOUT:-}" ] && [ "$OPENCODE_TIMEOUT" -gt 0 ] 2>/dev/null; then
+        "$OPENCODE_BIN" run --model "$model" < "$prompt_file" &
+        _oc_pid=$!
+        (
+          sleep "$OPENCODE_TIMEOUT"
+          kill $_oc_pid 2>/dev/null || true
+        ) &
+        _watchdog=$!
+        wait $_oc_pid 2>/dev/null
+        _oc_exit=$?
+        kill $_watchdog 2>/dev/null || true
+        exit $_oc_exit
+      else
+        "$OPENCODE_BIN" run --model "$model" < "$prompt_file"
+      fi
     ) > "$output_file"; then
-      append_source_failure_log "$agent" "agent_execution_failed" "Subagent output unavailable or incomplete." "Mark report as draft and require manual verification."
+      append_source_failure_log "$agent" "${agent} execution failed" "agent_execution_failed" "Subagent output unavailable or incomplete." "Mark report as draft and require manual verification."
       return 1
     fi
   fi
@@ -520,10 +567,18 @@ If source collection, web search, fetch, or source validation fails, append entr
 \`\`\`yaml
 source_failure_log:
   - failure_time:
-    failed_stage:
+    failed_task:
+    failed_source_type:
+    failed_source_detail:
     failure_type:
+    failure_stage:
     affected_scope:
+    affected_conclusions:
     fallback_handling:
+    fallback_source_level:
+    confidence_impact:
+    report_usability_marking:
+    audit_grade_cap:
     required_manual_sources:
     suggested_databases_or_keywords:
 \`\`\`

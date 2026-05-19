@@ -7,7 +7,7 @@
 默认保存目录：
 
 ```text
-~/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub/收件箱/
+${DEEP_RESEARCH_OUTPUT_DIR:-~/Deep-Research-Outputs/}
 ```
 
 文件名格式：

@@ -32,7 +32,7 @@ source_types:
 
   local_vault:
     description: "本地 Obsidian Vault / RichardHub 资料：公司历史报告、项目方案、用户笔记、会议纪要、技术调研、业务材料"
-    path: "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub"
+    path: "${DEEP_RESEARCH_VAULT_DIR:-<configure-your-local-vault-dir>}"
     allowed_for_core_claims: conditional
     conditions:
       - "标注'内部口径，需以财务或系统后台核验为准'"
@@ -46,8 +46,8 @@ source_types:
     paths:
       - "~/Documents/karpathy-wiki"
       - "~/Documents/llm-wiki"
-      - "~/Documents/RichardHub/Git/karpathy-wiki"
-      - "~/Documents/RichardHub/Git/llm-wiki"
+      - "<your-workspace>/karpathy-wiki"
+      - "<your-workspace>/llm-wiki"
     allowed_for_core_claims: conditional
     conditions:
       - "用于技术原理解释和术语理解"

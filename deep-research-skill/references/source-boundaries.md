@@ -50,7 +50,7 @@
 - 文件日期决定数据时效性，旧文件中的数字不可当当前数据
 - 个人笔记和会议纪要不是经过核验的事实
 
-**路径**：`~/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub`
+**路径**：`DEEP_RESEARCH_VAULT_DIR` 指向的本地 Vault 目录（未配置时由使用者自行指定）
 
 **误用风险**：
 - **把本地笔记当权威事实** — 最常犯的错误
@@ -74,8 +74,8 @@
 **路径**（可配置，候选）：
 - `~/Documents/karpathy-wiki`
 - `~/Documents/llm-wiki`
-- `~/Documents/RichardHub/Git/karpathy-wiki`
-- `~/Documents/RichardHub/Git/llm-wiki`
+- `<your-workspace>/karpathy-wiki`
+- `<your-workspace>/llm-wiki`
 
 **误用风险**：
 - **把 Wiki 技术解释当最新产业事实** — 最常犯的错误

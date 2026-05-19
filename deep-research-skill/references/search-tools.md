@@ -255,7 +255,7 @@ curl -s --connect-timeout 15 \
   python3 -c "
 import json,sys
 data = json.load(sys.stdin)
-for p in data.get('data',{}).get('pages',[]):
+for p in data.get('data',{}).get('webPages',{}).get('value',[]):
     print(f'[{p.get(\"language\",\"zh\")}] {p.get(\"title\",\"\")}')
     print(f'  {p.get(\"url\",\"\")}')
     print(f'  site: {p.get(\"siteName\",\"\")}  date: {p.get(\"dateLastCrawled\",\"\")[:10]}')
@@ -307,14 +307,9 @@ scripts/search.sh "AI safety" --parallel --lang en       # Exa + Brave 并发
 - 自动语言检测（中文→博查，英文→Exa/Brave）
 - 多引擎并发（`--parallel`，博查+Brave 或 Exa+Brave 同时搜索）
 - 引擎 fallback（博查失败→Brave，Exa失败→Brave，Brave失败→博查/Exa）
-- 会话级缓存（MD5 键，/tmp/opencode-brave-cache.json）
-- 搜索计数器集成（/tmp/opencode-brave-count）
+- 会话级缓存（MD5 键，默认写入 `~/.cache/deep-research-skill/search-cache.json`）
+- 搜索计数器集成（默认写入 `~/.local/state/deep-research-skill/search-count`）
 - 指数退避重试（最多 3 次）
-
-### Scheme F — Exa 语义搜索 API（英文语义主力，新增）
-
-> **推荐**：使用 `scripts/search.sh "English query"` 自动路由（有 EXA_API_KEY 时优先 Exa）。
-> 完整文档：[references/search-backends/exa.md](references/search-backends/exa.md)。
 
 ## Phase 2 搜索执行强制规则
 
@@ -406,13 +401,16 @@ flowchart LR
 
 ```bash
 # Phase 2 开始前初始化
-CACHE_FILE="/tmp/opencode-brave-cache.json"
+CACHE_FILE="${XDG_CACHE_HOME:-$HOME/.cache}/deep-research-skill/search-cache.json"
+mkdir -p "$(dirname "$CACHE_FILE")"
+chmod 700 "$(dirname "$CACHE_FILE")"
 echo '{}' > "$CACHE_FILE"
+chmod 600 "$CACHE_FILE"
 ```
 
 ```bash
 # 每次搜索前：检查缓存
-CACHE_FILE="/tmp/opencode-brave-cache.json"
+CACHE_FILE="${XDG_CACHE_HOME:-$HOME/.cache}/deep-research-skill/search-cache.json"
 
 search_brave() {
     local query="$1"
@@ -489,7 +487,7 @@ Brave 返回的 `extra_snippets` 字段包含页面核心段落文本。能用 e
 
 ```bash
 # 追踪文件
-COUNT_FILE="/tmp/opencode-brave-count"
+COUNT_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/deep-research-skill/search-count"
 
 # 初始化
 echo "0" > "$COUNT_FILE"
@@ -508,7 +506,7 @@ echo $((count + 1)) > "$COUNT_FILE"
 ```
 # Phase 2 开始
 1. export https_proxy=http://127.0.0.1:7890
-2. echo "0" > /tmp/opencode-brave-count
+2. echo "0" > "${XDG_STATE_HOME:-$HOME/.local/state}/deep-research-skill/search-count"
 3. 列出所有高优先级搜索词（≤70%预算 = ≤10次）
 4. 对每个词：先查缓存 → 未命中则搜索 → 写入缓存 → 更新计数
 5. 第一批搜索完成 → 评估结果覆盖度

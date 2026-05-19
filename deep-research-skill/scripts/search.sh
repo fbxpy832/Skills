@@ -6,8 +6,8 @@
 #   1. 自动检测查询语言（中文/英文/混合）
 #   2. 按语言路由到最佳搜索后端
 #   3. 支持手动指定后端（--backend bocha|brave|exa|auto）
-#   4. 集成会话级缓存（/tmp/opencode-brave-cache.json）
-#   5. 集成搜索计数器（/tmp/opencode-brave-count）
+#   4. 集成会话级缓存（默认写入 ~/.cache/deep-research-skill/search-cache.json）
+#   5. 集成搜索计数器（默认写入 ~/.local/state/deep-research-skill/search-count）
 #   6. 重试逻辑（指数退避，最多3次）
 #   7. 超时控制
 #   8. 统一 JSON 输出格式
@@ -42,11 +42,16 @@ fi
 # 代理配置（统一使用 7890 端口，与 runner 保持一致）
 PROXY_PORT="${DEEP_RESEARCH_PROXY_PORT:-7890}"
 PROXY_HOST="127.0.0.1"
-CACHE_FILE="${DEEP_RESEARCH_CACHE_FILE:-/tmp/opencode-brave-cache.json}"
-COUNT_FILE="${DEEP_RESEARCH_COUNT_FILE:-/tmp/opencode-brave-count}"
+CACHE_DIR="${DEEP_RESEARCH_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/deep-research-skill}"
+STATE_DIR="${DEEP_RESEARCH_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/deep-research-skill}"
+CACHE_FILE="${DEEP_RESEARCH_CACHE_FILE:-$CACHE_DIR/search-cache.json}"
+COUNT_FILE="${DEEP_RESEARCH_COUNT_FILE:-$STATE_DIR/search-count}"
 MAX_RETRIES="${DEEP_RESEARCH_MAX_RETRIES:-3}"
 TIMEOUT="${DEEP_RESEARCH_TIMEOUT:-15}"
 DEFAULT_COUNT=8
+
+mkdir -p "$CACHE_DIR" "$STATE_DIR"
+chmod 700 "$CACHE_DIR" "$STATE_DIR" 2>/dev/null || true
 
 # Brave API. Users must provide their own key via setup.sh or environment.
 BRAVE_API_KEY="${BRAVE_API_KEY:-}"
@@ -94,7 +99,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Options:"
       echo "  --backend bocha|brave|exa|auto  搜索后端（默认 auto）"
-  echo "  --parallel                    多引擎并发搜索"
+      echo "  --parallel                    多引擎并发搜索"
       echo "  --lang zh|en|auto           查询语言（默认 auto）"
       echo "  --count N                   返回结果数（默认 8）"
       echo "  --freshness noLimit|oneDay|oneWeek|oneMonth|oneYear  时效性过滤（仅博查）"
@@ -140,11 +145,14 @@ detect_language() {
   local total=0
 
   # Count CJK characters (force UTF-8 locale for perl)
-  zh_count=$(echo "$q" | LC_ALL=en_US.UTF-8 perl -CS -ne 'print scalar(() = m/[\x{4e00}-\x{9fff}\x{3400}-\x{4dbf}\x{20000}-\x{2a6df}\x{2a700}-\x{2b73f}\x{2b740}-\x{2b81f}\x{2b820}-\x{2ceaf}\x{2ceb0}-\x{2ebe0}\x{3000}-\x{303f}\x{ff00}-\x{ffef}]/g)' 2>/dev/null)
-  total=${#q}
+  zh_count=$(printf '%s' "$q" | LC_ALL=en_US.UTF-8 perl -CS -ne 'print scalar(() = m/[\x{4e00}-\x{9fff}\x{3400}-\x{4dbf}\x{20000}-\x{2a6df}\x{2a700}-\x{2b73f}\x{2b740}-\x{2b81f}\x{2b820}-\x{2ceaf}\x{2ceb0}-\x{2ebe0}\x{3000}-\x{303f}\x{ff00}-\x{ffef}]/g)' 2>/dev/null)
+  total=$(printf '%s' "$q" | LC_ALL=en_US.UTF-8 perl -CS -ne 'print length($_)' 2>/dev/null)
 
   if [ -z "$zh_count" ]; then
     zh_count=0
+  fi
+  if [ -z "$total" ]; then
+    total=0
   fi
 
   # If >15% of characters are Chinese, consider it a Chinese query
@@ -196,16 +204,18 @@ try:
         cache = json.load(f)
 except:
     pass
-cache['$key'] = '''$value'''
+cache['$key'] = sys.stdin.read().rstrip('\n')
 with open('$CACHE_FILE', 'w') as f:
     json.dump(cache, f)
-" 2>/dev/null
+" <<< "$value" 2>/dev/null
+  chmod 600 "$CACHE_FILE" 2>/dev/null || true
 }
 
 counter_check() {
   local budget="${1:-15}"
   if [ ! -f "$COUNT_FILE" ]; then
     echo "0" > "$COUNT_FILE"
+    chmod 600 "$COUNT_FILE" 2>/dev/null || true
     return 0
   fi
   local count
@@ -225,6 +235,7 @@ counter_inc() {
     count=$(cat "$COUNT_FILE" 2>/dev/null || echo "0")
     echo $((count + 1)) > "$COUNT_FILE"
   fi
+  chmod 600 "$COUNT_FILE" 2>/dev/null || true
 }
 
 retry() {
@@ -412,7 +423,7 @@ if not pages:
     print('(no results)')
     sys.exit(0)
 for p in pages:
-    title = p.get('name', '')
+    title = p.get('title', '')
     url = p.get('url', '')
     snippet = (p.get('snippet') or '')[:250]
     site = p.get('siteName', '')

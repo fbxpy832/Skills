@@ -54,7 +54,7 @@ setup 会在 `~/.config/deep-research-skill/` 下生成本机私有配置，包�
 - 实际执行一致性检查：读 [references/execution-consistency.md](references/execution-consistency.md)。
 - 输出文件与交付汇报：读 [references/output-rules.md](references/output-rules.md)。
 - 用户业务上下文适配：涉及郑好停、阿顺数智、智慧停车、国企、城市治理、停车业务时读 [references/user-context.md](references/user-context.md)。
-- 报告模板：按任务类型读取 `templates/` 下对应模板。
+- 报告模板：按任务类型读取 `templates/` 下对应模板；生成附录时再读 [references/template-appendix.md](references/template-appendix.md)。
 
 ## Phase 0 Quick Start
 
@@ -107,7 +107,7 @@ Phase 0 完成后、Phase 1 开始前，必须先形成内部 `source_plan`，�
 |---------|------|:---:|:---:|
 | **external_authoritative** | 政府官网、监管机构、交易所公告、上市公司公告、法规原文、标准、统计年鉴、招股书/年报/季报、学术论文、权威会议论文、行业协会报告、公开招投标 | ✓ | S/A |
 | **external_media** | 主流财经媒体、行业媒体、券商研报、咨询机构报告、企业新闻稿、产品官网、技术博客、会议材料 | 需交叉验证 | B/C |
-| **local_vault** | 本地 Obsidian Vault / RichardHub：公司历史报告、项目方案、用户笔记、会议纪要、业务材料 | 条件允许（标注"内部口径，需核验"） | 内部口径 |
+| **local_vault** | 本地 Obsidian Vault（建议通过 `DEEP_RESEARCH_VAULT_DIR` 配置）：公司历史报告、项目方案、用户笔记、会议纪要、业务材料 | 条件允许（标注"内部口径，需核验"） | 内部口径 |
 | **local_wiki** | 本地 llm-wiki / karpathy wiki：AI/LLM/Agent 等技术原理知识库 | 条件允许（不用于最新事实） | 技术参考 |
 | **uploaded_files** | 当前上传的 Markdown/PDF/Word/Excel/图片等 | 条件允许（区分"文件内声称"与"已核验事实"） | 当前上下文 |
 | **model_reasoning** | AI 推理判断 | ✗ 不得写成事实 | D |
@@ -136,7 +136,7 @@ Phase 0 完成后、Phase 1 开始前，必须先形成内部 `source_plan`，�
 
 ### Source Plan 最小输出
 
-每次研究必须在内部形成 source_plan.ymllike 判断：
+每次研究必须在内部形成 `source_plan` 的 YAML-like 判断：
 
 - `task_type`
 - `required_sources`: 必须使用的来源
@@ -261,7 +261,7 @@ Skills/deep-research-skill/scripts/opencode-research-runner.sh high_quality /tmp
 
 默认保存到：
 
-`~/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub/收件箱/`
+`${DEEP_RESEARCH_OUTPUT_DIR:-~/Deep-Research-Outputs/}`
 
 文件名：
 
@@ -309,4 +309,4 @@ Skills/deep-research-skill/scripts/opencode-research-runner.sh high_quality /tmp
 
 ## Backward Compatibility
 
-原有能力继续保留：问题树、分层搜索、证据分级、反证扫描、交叉验证、置信度标注、多格式输出、禁止空话、技术路线主推/备选/不建议结构、报告保存到 Obsidian 收件箱。
+原有能力继续保留：问题树、分层搜索、证据分级、反证扫描、交叉验证、置信度标注、多格式输出、禁止空话、技术路线主推/备选/不建议结构、报告保存到用户配置的输出目录。

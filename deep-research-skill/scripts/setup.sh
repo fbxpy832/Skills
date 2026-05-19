@@ -35,7 +35,12 @@ shell_quote() {
 }
 
 var_name() {
-  echo "$1" | tr '[:lower:]-./ ' '[:upper:]____' | tr -cd 'A-Z0-9_'
+  local result
+  result="$(echo "$1" | tr '[:lower:]-./ ' '[:upper:]____' | tr -cd 'A-Z0-9_')"
+  if [ -z "$result" ]; then
+    result="PROVIDER"
+  fi
+  echo "$result"
 }
 
 provider_defaults() {
