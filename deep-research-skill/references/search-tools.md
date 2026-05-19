@@ -1,10 +1,10 @@
 # Search Tools
 
-定义 Deep Research 在 OpenCode 环境中的外部搜索工具矩阵、使用方案和降级策略。
+定义 Deep Research 在多宿主环境中的外部搜索工具矩阵、使用方案和降级策略。OpenCode、Codex、Claude Code、CloudCode、GUI、TU/terminal runner 或其他 agent 宿主都应优先复用 `scripts/search.sh` 和同一组搜索 API key。
 
 ## 环境限制
 
-当前环境（OpenCode + macOS Darwin + 中国大陆网络）中：
+当前默认环境（macOS Darwin + 中国大陆网络）中：
 
 - **Brave Search API** — ✅ 通过系统代理可用，API 返回结构化 JSON，中英文搜索质量均好。通过 `scripts/search.sh` 统一调用。
 - **博查 AI Search API** — ✅ **中文主力搜索引擎**。国内原生 AI 搜索 API，无需代理，中文搜索质量业界最佳。详见 [references/search-backends/bocha.md](references/search-backends/bocha.md)。
@@ -541,7 +541,7 @@ Phase 2 执行后必须在内部记录：
 
 ## MCP 搜索协议支持
 
-除了通过 `search.sh` 脚本直接调用搜索 API 外，Deep Research 还可以通过 **MCP（Model Context Protocol）** 接入第三方搜索服务。OpenCode 原生支持 MCP 协议，无需额外安装 SDK。
+除了通过 `search.sh` 脚本直接调用搜索 API 外，Deep Research 还可以通过 **MCP（Model Context Protocol）** 或宿主内置工具接入第三方搜索服务。具体配置由 OpenCode、Codex、Claude Code、CloudCode、GUI 或 TU/terminal runner 各自负责。
 
 ### 可接入的 MCP 搜索服务
 
@@ -554,7 +554,7 @@ Phase 2 执行后必须在内部记录：
 
 ### 配置方式
 
-在 OpenCode 的 MCP 配置中添加（具体路径取决于 OpenCode 版本）：
+在支持 MCP 的宿主配置中添加（具体路径取决于宿主）：
 
 ```json
 {

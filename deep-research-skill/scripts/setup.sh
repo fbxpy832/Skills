@@ -46,7 +46,7 @@ var_name() {
 provider_defaults() {
   case "$1" in
     opencode)
-      echo "opencode-go|OpenCode token plan||OPENCODE_API_KEY|deepseek-v4-pro|deepseek-v4-flash|kimi-k2.6"
+      echo "opencode-go|Host token plan / OpenCode Go||OPENCODE_API_KEY|deepseek-v4-pro|deepseek-v4-flash|kimi-k2.6"
       ;;
     deepseek)
       echo "deepseek|DeepSeek|https://api.deepseek.com/v1|DEEPSEEK_API_KEY|deepseek-chat|deepseek-chat|deepseek-chat"
@@ -71,7 +71,7 @@ provider_defaults() {
 
 choose_template() {
   echo "Choose provider template:" >&2
-  echo "  1) OpenCode token plan" >&2
+  echo "  1) Host token plan / OpenCode Go" >&2
   echo "  2) DeepSeek OpenAI-compatible" >&2
   echo "  3) Moonshot / Kimi OpenAI-compatible" >&2
   echo "  4) OpenAI" >&2
@@ -96,6 +96,7 @@ echo "Deep Research Skill setup"
 echo ""
 echo "This writes local-only secrets to:"
 echo "  $CONFIG_ENV"
+echo "This config is host-agnostic. Codex, OpenCode, Claude Code, CloudCode, GUI, TU/terminal runners, and other agents can read it."
 echo ""
 
 provider_count="$(prompt "How many model providers do you want to configure" "1")"
@@ -147,7 +148,7 @@ for i in $(seq 1 "$provider_count"); do
   provider_id="$(prompt "Provider id used in model routes" "$id_default")"
   provider_id="${provider_id// /-}"
   provider_display="$(prompt "Display name" "$name_default")"
-  base_url="$(prompt "Endpoint base URL (blank for built-in OpenCode providers)" "$base_default")"
+  base_url="$(prompt "Endpoint base URL (blank for host-managed token plans)" "$base_default")"
   auth_env="$(prompt "API key environment variable name" "$auth_default")"
 
   credential=""
@@ -258,13 +259,13 @@ exa_key="$(prompt_secret "EXA_API_KEY")"
 chmod 600 "$CONFIG_ENV" "$PROVIDERS_FILE"
 
 echo ""
-install_choice="$(prompt "Install/update OpenCode provider metadata now (no secrets are written to OpenCode config)" "Y")"
+install_choice="$(prompt "Optional: install/update OpenCode provider metadata now (no secrets are written to OpenCode config)" "N")"
 case "$install_choice" in
   y|Y|yes|YES)
     "$SCRIPT_DIR/install-opencode-providers.sh"
     ;;
   *)
-    echo "Skipped OpenCode provider metadata install. You can run scripts/install-opencode-providers.sh later."
+    echo "Skipped OpenCode provider metadata install. Other hosts can read $CONFIG_ENV directly. You can run scripts/install-opencode-providers.sh later."
     ;;
 esac
 

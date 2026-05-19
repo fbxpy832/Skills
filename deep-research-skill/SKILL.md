@@ -15,15 +15,26 @@ Deep Research 是一套“研究决策型”工作流，不只是资料汇总。
 scripts/setup.sh
 ```
 
-setup 会在 `~/.config/deep-research-skill/` 下生成本机私有配置，包含：
+setup 会在 `~/.config/deep-research-skill/` 下生成本机私有配置。该配置是宿主无关的，可被 OpenCode、Codex、Claude Code、CloudCode、Deep Research GUI、TU/terminal 工具或其他 agent runner 读取，包含：
 
-- 多个模型来源：OpenCode token plan、DeepSeek、Moonshot/Kimi、OpenAI、OpenRouter、SiliconFlow 或自定义 OpenAI-compatible endpoint；可一次配置多个 provider。
+- 多个模型来源：宿主 token plan、DeepSeek、Moonshot/Kimi、OpenAI、OpenRouter、SiliconFlow 或自定义 OpenAI-compatible endpoint；可一次配置多个 provider。
 - 各 agent 的 provider/model 路由：`planner_agent`、`source_agent`、`long_context_agent`、`analyst_agent`、`scenario_agent`、`writer_agent`、`reviewer_agent`。
 - 接入点地址：每个来源可配置 `base_url`。
 - 凭证：支持 API key 或 token plan key。本 skill 不要求把凭证写入仓库。
 - 搜索工具 key：提示配置 `BRAVE_API_KEY`、`BOCHA_API_KEY`、`EXA_API_KEY`，用于 `scripts/search.sh`。
 
-生成的 `config.env` 会被 `scripts/model-router.sh`、`scripts/opencode-research-runner.sh` 和 `scripts/search.sh` 自动读取。setup 还可调用 `scripts/install-opencode-providers.sh`，把 provider 元数据和模型列表合并进 OpenCode 配置；API key 仍只保存在本机私有 `config.env`，runner 在调用对应 agent 前临时导出。若未配置，仍按内置默认模型路由运行，但搜索工具必须使用用户自己的 API key；不得依赖他人或示例 key。
+生成的 `config.env` 会被 `scripts/model-router.sh`、`scripts/opencode-research-runner.sh`、`scripts/search.sh` 以及其他宿主适配器读取。setup 可选调用 `scripts/install-opencode-providers.sh`，把 provider 元数据和模型列表合并进 OpenCode 配置；默认不写任何宿主配置。API key 仍只保存在本机私有 `config.env`，runner 或宿主适配器在调用对应 agent 前临时导出。若未配置，仍按内置默认模型路由运行，但搜索工具必须使用用户自己的 API key；不得依赖他人或示例 key。
+
+## Host Integration
+
+本 skill 的核心协议与具体宿主解耦：
+
+- **通用配置层**：`~/.config/deep-research-skill/config.env`、`providers.env`、`model-routing.yaml`。
+- **通用搜索层**：`scripts/search.sh`，由 `BRAVE_API_KEY`、`BOCHA_API_KEY`、`EXA_API_KEY` 驱动。
+- **通用模型路由层**：`scripts/model-router.sh MODE AGENT`，返回 `provider/model`。
+- **宿主适配层**：OpenCode、Codex、Claude Code、CloudCode、GUI、TU/terminal runner 可各自读取同一配置，并负责真实模型调用与日志证据。
+
+宿主只能把 `provider/model` 写成“请求模型”或“路由建议”。只有对应宿主日志、UI 状态、命令输出或 API 响应能证明真实模型时，才可写“实际使用模型”。
 
 ## Core Contract
 
@@ -46,7 +57,7 @@ setup 会在 `~/.config/deep-research-skill/` 下生成本机私有配置，包�
 - 搜索工具方案（工具矩阵、搜索引擎选择、降级策略）：读 [references/search-tools.md](references/search-tools.md)。
 - 模型路由与模式：读 [model-routing.yaml](model-routing.yaml)。
 - 首次配置与本机私有凭证：运行 `scripts/setup.sh`；配置文件位于 `~/.config/deep-research-skill/config.env`。
-- OpenCode 直接调用：读 [references/opencode-runner.md](references/opencode-runner.md)，使用 `scripts/opencode-research-runner.sh`。
+- 宿主集成：默认读本节 `Host Integration`；OpenCode 直接调用时再读 [references/opencode-runner.md](references/opencode-runner.md)，使用 `scripts/opencode-research-runner.sh`。
 - 完整阶段流程：读 [references/workflow.md](references/workflow.md)。
 - 任务分类与研究框架：读 [references/task-classification.md](references/task-classification.md)。
 - Subagent 职责和输出契约：读 [references/subagents.md](references/subagents.md)。
@@ -180,7 +191,7 @@ source_plan 可作为内部过程，不强制写入报告正文。但最终交�
 
 ## Model Routing Rules
 
-模型路由以 [model-routing.yaml](model-routing.yaml) 和本机 `~/.config/deep-research-skill/config.env` 为准。本机配置优先级高于内置默认值，但仍只是“指令级路由建议”。只有 runner 或 OpenCode 命令输出能验证 `--model <model_id>` 调用成功时，才可写“已请求/已切换到该模型”；只有 OpenCode 状态栏、日志或命令输出能检测真实模型时，才可写“实际使用该模型”。无法检测时必须写“模型使用未能自动验证”。
+模型路由以 [model-routing.yaml](model-routing.yaml) 和本机 `~/.config/deep-research-skill/config.env` 为准。本机配置优先级高于内置默认值，但仍只是“指令级路由建议”。只有 runner、宿主命令输出或 API 响应能验证模型调用成功时，才可写“已请求/已切换到该模型”；只有宿主状态栏、日志、命令输出或 API 响应能检测真实模型时，才可写“实际使用该模型”。无法检测时必须写“模型使用未能自动验证”。
 
 关键底线：
 
@@ -203,7 +214,7 @@ source_plan 可作为内部过程，不强制写入报告正文。但最终交�
 - Kimi 2.6 单独承担最终结论。
 - 为省成本跳过最终 Pro 审计。
 
-## OpenCode Direct Runner
+## OpenCode Adapter
 
 需要从 OpenCode 直接运行 Deep Research 时，使用：
 
