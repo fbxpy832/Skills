@@ -1,5 +1,7 @@
 # OpenCode Runner
 
+> **Note**: OpenCode is ONE host adapter for the Deep Research protocol. For a complete overview of how different hosts (Codex, Claude Code, CloudCode, GUI, TU/terminal) integrate with the protocol, see `references/host-adapter-contract.md`. For host-neutral execution without OpenCode dependencies, use `scripts/generic-research-runner.sh`.
+
 Use `scripts/opencode-research-runner.sh` when Deep Research should be run directly through OpenCode with model routing.
 
 ## Command
@@ -81,6 +83,7 @@ The runner creates:
 - `run-summary.md`: mode, task path, model mapping, output files.
 - `execution-context.md`: requested model routes and actual model detection status.
 - `source_failure_log.md`: source/search/fetch failure log template for failed or insufficient source collection.
+- `events.ndjson`: structured event stream (one JSON object per line) with run_started, agent_started, agent_completed, agent_failed, stage_started, stage_completed, run_completed events.
 - `prompts/`: per-agent prompts sent to OpenCode.
 - `outputs/`: per-agent Markdown outputs.
 - `logs/`: per-agent timing and file metadata.

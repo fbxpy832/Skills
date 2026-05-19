@@ -1,0 +1,107 @@
+# Eval Rubric — Deep Research Skill
+# Defines pass/fail criteria for each eval task type.
+
+version: "1.0"
+
+global_criteria:
+  artifacts_exist:
+    - run-summary.md
+    - execution-context.md
+    - source_failure_log.md
+    - events.ndjson
+    - prompts/
+    - outputs/
+    - logs/
+
+  events_valid:
+    - has_run_started: "events.ndjson contains at least one event with phase=run and status=started"
+    - has_run_completed: "events.ndjson contains at least one event with phase=run and status=completed"
+    - has_agent_events: "events.ndjson contains agent_started events for enabled agents"
+    - valid_json: "each line of events.ndjson is valid JSON"
+
+  model_routing_valid:
+    - run_summary_has_mapping: "run-summary.md lists requested_model for each agent"
+    - execution_context_has_status: "execution-context.md includes actual_model_detection_status"
+    - no_hardcoded_model_claims: "outputs do not claim models were 'used' without detection evidence"
+
+  search_and_source_valid:
+    - source_failure_log_exists: "source_failure_log.md exists (may be empty template)"
+    - search_status_reported: "run-summary.md or outputs reference search status"
+
+per_task_criteria:
+  business_decision:
+    weight: 1.0
+    required_agents:
+      - planner_agent
+      - source_agent
+      - analyst_agent
+      - scenario_agent
+      - writer_agent
+      - reviewer_agent
+    must_contain_fields:
+      - "model detection status"
+      - "source plan"
+      - "scenario analysis"
+
+  government_report:
+    weight: 1.0
+    required_agents:
+      - planner_agent
+      - source_agent
+      - long_context_agent
+      - analyst_agent
+      - writer_agent
+      - reviewer_agent
+    must_contain_fields:
+      - "policy references"
+      - "government_formal style"
+      - "external_authoritative sources"
+
+  technical_route:
+    weight: 1.0
+    required_agents:
+      - planner_agent
+      - source_agent
+      - analyst_agent
+      - writer_agent
+      - reviewer_agent
+    must_contain_fields:
+      - "technical comparison"
+      - "primary/backup/rejected routes"
+      - "source verification"
+
+  investment_analysis:
+    weight: 1.0
+    required_agents:
+      - planner_agent
+      - source_agent
+      - analyst_agent
+      - scenario_agent
+      - writer_agent
+      - reviewer_agent
+    must_contain_fields:
+      - "financial data"
+      - "investment disclaimer"
+      - "external_authoritative sources"
+
+  general_research:
+    weight: 1.0
+    required_agents:
+      - planner_agent
+      - source_agent
+      - analyst_agent
+      - writer_agent
+      - reviewer_agent
+    must_contain_fields:
+      - "trend overview"
+      - "source citations"
+      - "knowledge gaps"
+
+scoring:
+  pass_threshold: 0.8
+  conditional_pass_threshold: 0.5
+  weights:
+    artifacts_exist: 0.3
+    events_valid: 0.2
+    model_routing_valid: 0.3
+    search_and_source_valid: 0.2

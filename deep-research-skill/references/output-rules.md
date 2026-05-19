@@ -101,6 +101,32 @@ source_failure_log: ...
 - 是否建议进入下一步。
 - 是否需要人工复核的高风险部分。
 - 必须补充核验的来源。
+- 进度事件日志路径（`events.ndjson`）。
+
+- 输出文件路径。
+- 报告类型。
+- 自动选择的运行模式。
+- 使用的研究框架。
+- 使用的数据来源类型（按 external_authoritative / external_media / local_vault / local_wiki / uploaded_files / model_reasoning 列举）。
+- 是否启用本地 Vault 检索：是/否。
+- 是否启用本地 Wiki 检索：是/否。
+- 启用的 Subagent。
+- 每个 Subagent 的请求模型与真实模型检测状态。
+- 真实模型检测状态。
+- 模型路由执行状态：真实切换 / 指令级建议 / 无法验证。
+- 搜索状态：成功 / 部分成功 / 失败。
+- 来源失败状态：有失败 / 全部成功。
+- 来源审计等级：PASS / CONDITIONAL_PASS / FAIL。
+- 审计等级：PASS / CONDITIONAL_PASS / FAIL。
+- 报告可用性：正式版 / 内部初稿 / 离线初稿 / 仅供参考。
+- 是否触发模型升级。
+- 是否触发 fallback。
+- 主要结论。
+- 主要修改/优化点。
+- 仍缺哪些真实数据。
+- 是否建议进入下一步。
+- 是否需要人工复核的高风险部分。
+- 必须补充核验的来源。
 
 ## Model Statement Rule
 

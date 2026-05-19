@@ -122,6 +122,7 @@ fi
 mkdir -p "$OUTPUT_DIR/prompts" "$OUTPUT_DIR/outputs" "$OUTPUT_DIR/logs"
 source_failure_log_file="$OUTPUT_DIR/source_failure_log.md"
 execution_context_file="$OUTPUT_DIR/execution-context.md"
+events_file="$OUTPUT_DIR/events.ndjson"
 
 OPENCODE_BIN="${OPENCODE_BIN:-}"
 if [ -z "$OPENCODE_BIN" ]; then
@@ -283,6 +284,47 @@ source_failure_log:
 EOF
 }
 
+RUN_ID="$(basename "$OUTPUT_DIR")"
+
+write_event() {
+  local timestamp phase agent status requested_model detected_model_status message error
+  timestamp="$(date '+%Y-%m-%dT%H:%M:%S%z')"
+  phase="${1:-}"
+  agent="${2:-}"
+  status="${3:-}"
+  requested_model="${4:-}"
+  detected_model_status="${5:-not_verified}"
+  message="${6:-}"
+  error="${7:-}"
+
+  # JSON-escape all fields (prefer python3, fallback to sed)
+  local esc_phase esc_agent esc_status esc_model esc_msg esc_err esc_detected esc_runid esc_ts
+  esc_phase=$(printf '%s' "$phase" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().rstrip('\n')))" 2>/dev/null) || esc_phase="\"$(printf '%s' "$phase" | sed 's/\\/\\\\/g; s/"/\\"/g')\""
+  esc_agent=$(printf '%s' "$agent" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().rstrip('\n')))" 2>/dev/null) || esc_agent="\"$(printf '%s' "$agent" | sed 's/\\/\\\\/g; s/"/\\"/g')\""
+  esc_status=$(printf '%s' "$status" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().rstrip('\n')))" 2>/dev/null) || esc_status="\"$(printf '%s' "$status" | sed 's/\\/\\\\/g; s/"/\\"/g')\""
+  esc_model=$(printf '%s' "$requested_model" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().rstrip('\n')))" 2>/dev/null) || esc_model="\"$(printf '%s' "$requested_model" | sed 's/\\/\\\\/g; s/"/\\"/g')\""
+  esc_msg=$(printf '%s' "$message" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().rstrip('\n')))" 2>/dev/null) || esc_msg="\"$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g')\""
+  esc_err=$(printf '%s' "$error" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().rstrip('\n')))" 2>/dev/null) || esc_err="\"$(printf '%s' "$error" | sed 's/\\/\\\\/g; s/"/\\"/g')\""
+  esc_detected=$(printf '%s' "$detected_model_status" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().rstrip('\n')))" 2>/dev/null) || esc_detected="\"$(printf '%s' "$detected_model_status" | sed 's/\\/\\\\/g; s/"/\\"/g')\""
+  esc_runid=$(printf '%s' "$RUN_ID" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().rstrip('\n')))" 2>/dev/null) || esc_runid="\"$(printf '%s' "$RUN_ID" | sed 's/\\/\\\\/g; s/"/\\"/g')\""
+  esc_ts=$(printf '%s' "$timestamp" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().rstrip('\n')))" 2>/dev/null) || esc_ts="\"$(printf '%s' "$timestamp" | sed 's/\\/\\\\/g; s/"/\\"/g')\""
+
+  printf '{"timestamp":%s,"run_id":%s,"phase":%s,"agent":%s,"status":%s,"requested_model":%s,"detected_model_status":%s,"message":%s,"error":%s}\n' \
+    "$esc_ts" "$esc_runid" "$esc_phase" "$esc_agent" "$esc_status" "$esc_model" "$esc_detected" "$esc_msg" "$esc_err" \
+    >> "$events_file"
+}
+
+agent_to_stage_name() {
+  case "$1" in
+    planner_agent)      echo "stage_1_planning" ;;
+    source_agent|long_context_agent) echo "stage_2_evidence_collection" ;;
+    analyst_agent|scenario_agent)    echo "stage_3_analysis_and_scenario" ;;
+    writer_agent)       echo "stage_4_writing" ;;
+    reviewer_agent)     echo "stage_5_review" ;;
+    *)                  echo "stage_unknown" ;;
+  esac
+}
+
 deps_for_agent() {
   case "$1" in
     planner_agent)
@@ -380,11 +422,12 @@ run_agent() {
   local agent="$1"
 
   if ! agent_enabled "$agent"; then
+    write_event "$(agent_to_stage_name "$agent")" "$agent" "skipped" "" "not_verified" "Skipping disabled $agent" ""
     echo "Skipping disabled $agent"
     return 0
   fi
 
-  local model prompt_file output_file deps_text deps_display start_time end_time
+  local model prompt_file output_file deps_text deps_display start_time end_time stage_name
   local -a deps=()
   model="$("$ROUTER" "$MODE" "$agent")"
   prompt_file="$(agent_prompt_file "$agent")"
@@ -401,6 +444,9 @@ run_agent() {
 
   write_prompt "$agent" "$model" "$prompt_file" "$deps_text"
   export_provider_env_for_model "$model"
+
+  stage_name="$(agent_to_stage_name "$agent")"
+  write_event "$stage_name" "$agent" "started" "$model" "not_verified" "Starting $agent" ""
 
   echo "Prepared $agent with model $model"
   echo "Prompt: $prompt_file"
@@ -419,9 +465,12 @@ run_agent() {
       echo "- Output file: $output_file"
       echo "- Dependencies: $deps_display"
     } > "$output_file"
+
+    write_event "$stage_name" "$agent" "completed" "$model" "not_verified" "Dry-run completed for $agent" ""
   else
     if [ -z "$OPENCODE_BIN" ] || [ ! -x "$OPENCODE_BIN" ]; then
       echo "ERROR: opencode CLI not found. Set OPENCODE_BIN or install/login to OpenCode."
+      write_event "$stage_name" "$agent" "failed" "$model" "not_verified" "OpenCode CLI not found" "ERR_HOST"
       return 1
     fi
 
@@ -443,9 +492,12 @@ run_agent() {
         "$OPENCODE_BIN" run --model "$model" < "$prompt_file"
       fi
     ) > "$output_file"; then
+      write_event "$stage_name" "$agent" "failed" "$model" "not_verified" "${agent} execution failed" "agent_execution_failed"
       append_source_failure_log "$agent" "${agent} execution failed" "agent_execution_failed" "Subagent output unavailable or incomplete." "Mark report as draft and require manual verification."
       return 1
     fi
+
+    write_event "$stage_name" "$agent" "completed" "$model" "not_verified" "Completed $agent" ""
   fi
 
   end_time="$(date '+%Y-%m-%d %H:%M:%S')"
@@ -471,6 +523,7 @@ run_stage_parallel() {
 
   echo ""
   echo "== Stage: $stage_name =="
+  write_event "$stage_name" "" "started" "" "not_verified" "Stage $stage_name started" ""
 
   for agent in "${agents[@]}"; do
     if agent_enabled "$agent"; then
@@ -492,9 +545,12 @@ run_stage_parallel() {
   done
 
   if [ "$failed" != "0" ]; then
+    write_event "$stage_name" "" "failed" "" "not_verified" "Stage $stage_name failed" "One or more agents failed"
     echo "ERROR: Stage failed: $stage_name"
     exit 1
   fi
+
+  write_event "$stage_name" "" "completed" "" "not_verified" "Stage $stage_name completed" ""
 }
 
 run_stage_sequential() {
@@ -505,10 +561,13 @@ run_stage_sequential() {
 
   echo ""
   echo "== Stage: $stage_name =="
+  write_event "$stage_name" "" "started" "" "not_verified" "Stage $stage_name started" ""
 
   for agent in "${agents[@]}"; do
     run_agent "$agent"
   done
+
+  write_event "$stage_name" "" "completed" "" "not_verified" "Stage $stage_name completed" ""
 }
 
 run_stage() {
@@ -585,6 +644,8 @@ source_failure_log:
 \`\`\`
 EOF
 
+write_event "run" "" "started" "" "not_verified" "Deep Research OpenCode run started" ""
+
 for agent in planner_agent source_agent long_context_agent analyst_agent scenario_agent writer_agent reviewer_agent; do
   if agent_enabled "$agent"; then
     requested_model="$( "$ROUTER" "$MODE" "$agent" )"
@@ -628,9 +689,17 @@ cat >> "$summary_file" <<EOF
 - source_failure_log: $source_failure_log_file
 - execution_context: $execution_context_file
 - reporting_rule: Requested model routes must not be described as verified actual model usage.
+- events_log: $events_file
+EOF
+
+write_event "run" "" "completed" "" "not_verified" "Deep Research OpenCode run completed" ""
+
+cat >> "$summary_file" <<EOF
+- total_events: $(wc -l < "$events_file" 2>/dev/null || echo "0")
 EOF
 
 echo ""
 echo "Deep Research OpenCode run complete."
 echo "Summary: $summary_file"
+echo "Events: $events_file"
 echo "Outputs: $OUTPUT_DIR/outputs"

@@ -31,8 +31,9 @@ setup 会在 `~/.config/deep-research-skill/` 下生成本机私有配置。该�
 本 skill 的核心协议与具体宿主解耦：
 
 - **通用配置层**：`~/.config/deep-research-skill/config.env`、`providers.env`、`model-routing.yaml`。
-- **通用搜索层**：`scripts/search.sh`，由 `BRAVE_API_KEY`、`BOCHA_API_KEY`、`EXA_API_KEY` 驱动。
+- **通用搜索层**：`scripts/search.sh`，由 `BRAVE_API_KEY`、`BOCHA_API_KEY`、`EXA_API_KEY` 驱动。搜索适配器契约见 `references/search-adapter-contract.md`。
 - **通用模型路由层**：`scripts/model-router.sh MODE AGENT`，返回 `provider/model`。
+- **通用 Runner 层**：`scripts/generic-research-runner.sh` 提供宿主无关的 prompt/artifact 生成器，支持 `--dry-run`、`--parallel|--sequential`，写入 `run-summary.md`、`execution-context.md`、`source_failure_log.md`、`events.ndjson`。
 - **通用输出层**：`DEEP_RESEARCH_OUTPUT_DIR`，由 setup 初始化，所有宿主默认写入该目录。
 - **宿主适配层**：OpenCode、Codex、Claude Code、CloudCode、GUI、TU/terminal runner 可各自读取同一配置，并负责真实模型调用与日志证据。
 
@@ -56,10 +57,10 @@ setup 会在 `~/.config/deep-research-skill/` 下生成本机私有配置。该�
 - 来源类型与边界：读 [references/source-boundaries.md](references/source-boundaries.md)。
 - 来源分级和审计：读 [references/source-audit.md](references/source-audit.md)。
 - 来源失败日志：读 [references/source-failure-log.md](references/source-failure-log.md)。
-- 搜索工具方案（工具矩阵、搜索引擎选择、降级策略）：读 [references/search-tools.md](references/search-tools.md)。
+- 搜索工具方案与搜索适配器契约：读 [references/search-tools.md](references/search-tools.md) 和 [references/search-adapter-contract.md](references/search-adapter-contract.md)。
 - 模型路由与模式：读 [model-routing.yaml](model-routing.yaml)。
 - 首次配置与本机私有凭证：运行 `scripts/setup.sh`；配置文件位于 `~/.config/deep-research-skill/config.env`。
-- 宿主集成：默认读本节 `Host Integration`；OpenCode 直接调用时再读 [references/opencode-runner.md](references/opencode-runner.md)，使用 `scripts/opencode-research-runner.sh`。
+- 宿主集成：默认读本节 `Host Integration` 和 `references/host-adapter-contract.md`；OpenCode 直接调用时再读 [references/opencode-runner.md](references/opencode-runner.md)，使用 `scripts/opencode-research-runner.sh`；Codex、Claude Code、CloudCode、GUI、TU/terminal 及其他外部编排器使用 `scripts/generic-research-runner.sh`。
 - 完整阶段流程：读 [references/workflow.md](references/workflow.md)。
 - 任务分类与研究框架：读 [references/task-classification.md](references/task-classification.md)。
 - Subagent 职责和输出契约：读 [references/subagents.md](references/subagents.md)。
@@ -231,6 +232,14 @@ Skills/deep-research-skill/scripts/opencode-research-runner.sh high_quality /tmp
 ```
 
 该 runner 会按 `mode + agent` 调用 `scripts/model-router.sh`，默认采用分阶段并发：planner 先跑，source 与 long_context 并发，analyst 与 scenario 并发，writer 汇总，reviewer 最后审计。受限环境可用 `--sequential` 回退。详见 [references/opencode-runner.md](references/opencode-runner.md)。
+
+对于 Codex、Claude Code、CloudCode、GUI、TU/terminal 及其他外部编排器，使用宿主无关的通用 runner：
+
+```bash
+Skills/deep-research-skill/scripts/generic-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR]
+```
+
+该通用 runner 不依赖任何特定宿主，生成完整的 prompt、artifact 和 events.ndjson 事件流，适合作为外部编排器的 prompt/artifact 生成层。详见 [references/host-adapter-contract.md](references/host-adapter-contract.md)。
 
 ## Source And Data Rules
 
