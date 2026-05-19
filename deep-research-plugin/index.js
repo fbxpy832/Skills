@@ -3,9 +3,24 @@ import { resolve, dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+const CONFIG_ENV = process.env.DEEP_RESEARCH_CONFIG_ENV || join(homedir(), ".config", "deep-research-skill", "config.env");
+const SETUP_SCRIPT = resolve(__dirname, "scripts", "setup.sh");
+
+function checkConfig() {
+  if (existsSync(CONFIG_ENV)) return null;
+  return `⚠️  Deep Research is not configured yet.
+
+Run the setup wizard once to configure model providers and API keys:
+
+  bash ${SETUP_SCRIPT}
+
+This will create: ${CONFIG_ENV}`;
+}
 
 function runRunner(mode, taskFile, outputDir, options = {}) {
   const { dryRun = false, sequential = false, projectDir } = options;
@@ -35,7 +50,12 @@ function runRunner(mode, taskFile, outputDir, options = {}) {
   });
 }
 
-export const DeepResearchPlugin = async ({ directory, worktree }) => {
+export const DeepResearchPlugin = async ({ directory, worktree, client }) => {
+  const missing = checkConfig();
+  if (missing && client?.app?.log) {
+    client.app.log({ body: { service: "deep-research", level: "warn", message: missing } }).catch(() => {});
+  }
+
   return {
     tool: {
       deep_research_run: tool({
@@ -48,6 +68,9 @@ export const DeepResearchPlugin = async ({ directory, worktree }) => {
           sequential: tool.schema.boolean().default(false),
         },
         async execute(args, context) {
+          const missing = checkConfig();
+          if (missing) return missing;
+
           const { mode, task, outputDir, dryRun = false, sequential = false } = args;
           const { directory } = context;
 

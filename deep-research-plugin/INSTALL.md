@@ -16,49 +16,32 @@
 
 ## Quick Start（所有宿主通用）
 
-### 1. 准备
+### 一、安装
 
 ```bash
-# 获取分发包
-git clone <内部仓库地址> deep-research-plugin
-# 或解压 zip 到任意目录
-cd deep-research-plugin
+opencode plugin /path/to/deep-research-plugin --force
 ```
 
-### 2. 配置
+### 二、配置（必须）
 
 ```bash
-./scripts/setup.sh
+/path/to/deep-research-plugin/scripts/setup.sh
 ```
 
-setup 会生成本机私有配置（宿主无关，多宿主共享读取）：
+> **这一步不是可选的。** 不运行 setup 就不会有模型供应商、搜索 API key 和输出目录配置。安装后首次使用 `deep_research_run` tool 时也会提示运行。
 
-```
-~/.config/deep-research-skill/config.env
-```
+setup 会生成本机私有配置：`~/.config/deep-research-skill/config.env`
 
 配置内容包括：
 - 各 agent 模型来源（provider/model 路由）
 - 搜索 API key（Brave/Bocha/Exa，至少一个）
 - 输出目录（DEEP_RESEARCH_OUTPUT_DIR）
 
-> **注意**：
-> - `config.env` 不得提交到 git（已在 .gitignore 中）
-> - 权限应为 `0600`（`chmod 600 ~/.config/deep-research-skill/config.env`）
-> - 可通过 `DEEP_RESEARCH_CONFIG_ENV` 自定义配置文件路径
-> - 可通过 `DEEP_RESEARCH_SKILL_CONFIG_DIR` 自定义配置目录
-
-### 3. 验证
+### 三、验证
 
 ```bash
-# Dry-run 验证所有产物
 ./scripts/generic-research-runner.sh cost_saving /tmp/test-task.md /tmp/test-out . --dry-run --sequential
-
-# 运行 eval
 ./eval/run-eval.sh --dry-run --runner generic
-
-# 检查产物
-ls /tmp/test-out/
 ```
 
 ---
