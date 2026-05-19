@@ -24,7 +24,7 @@ global_criteria:
     - main_points_to_js: "package.json main field points to existing .js file"
     - index_importable: "index.js can be imported by Node without error"
     - plugin_yaml_parsable: "plugin.yaml is valid YAML"
-    - no_forbidden_docs: "docs do not reference 'opencode plugin install', 'opencode plugin list', or 'Skills/deep-research-skill'"
+    - no_forbidden_docs: "docs do not reference deprecated install commands or old skill paths"
 
   security_valid:
     - no_api_keys_in_artifacts: "artifacts do not contain API key patterns"

@@ -29,5 +29,8 @@
     "claude-code"
   ],
   "author": "",
+  "dependencies": {
+    "@opencode-ai/plugin": "*"
+  },
   "license": "MIT"
 }

@@ -77,7 +77,7 @@ opencode plugin /path/to/deep-research-plugin --force
 opencode plugin /path/to/deep-research-plugin --global --force
 ```
 
-或手动编辑 `~/.opencode/opencode.json`：
+或手动编辑项目级 `.opencode/opencode.json` 或全局 `~/.config/opencode/opencode.json`：
 
 ```json
 {
@@ -89,11 +89,13 @@ OpenCode 官方 loader 通过 `package.json` → `main` → `index.js` 加载插
 
 ### 使用
 
-通过 OpenCode 对话触发 `/opencode-deep-research`，或直接调用 runner：
+安装后 `deep_research_run` tool 即可在 OpenCode 对话中使用。也可直接调用 runner：
 
 ```bash
 ./scripts/opencode-research-runner.sh high_quality /tmp/task.md /tmp/out . --sequential
 ```
+
+如需斜杠命令，在 `opencode.json` 中添加 command 定义（参见 https://opencode.ai/docs/commands/）。
 
 ---
 
