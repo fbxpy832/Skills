@@ -7,25 +7,25 @@ Use `scripts/opencode-research-runner.sh` when Deep Research should be run direc
 ## Command
 
 ```bash
-Skills/deep-research-skill/scripts/opencode-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR] [--parallel|--sequential]
+./scripts/opencode-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR] [--parallel|--sequential]
 ```
 
 Example:
 
 ```bash
-Skills/deep-research-skill/scripts/opencode-research-runner.sh high_quality /tmp/research-task.md /tmp/deep-research-run /Users/xpy/Documents/RichardHub/Git
+./scripts/opencode-research-runner.sh high_quality /tmp/research-task.md /tmp/deep-research-run /Users/xpy/Documents/RichardHub/Git
 ```
 
 Dry run without calling OpenCode:
 
 ```bash
-Skills/deep-research-skill/scripts/opencode-research-runner.sh high_quality /tmp/research-task.md /tmp/deep-research-run /Users/xpy/Documents/RichardHub/Git --dry-run
+./scripts/opencode-research-runner.sh high_quality /tmp/research-task.md /tmp/deep-research-run /Users/xpy/Documents/RichardHub/Git --dry-run
 ```
 
 Force sequential fallback:
 
 ```bash
-Skills/deep-research-skill/scripts/opencode-research-runner.sh high_quality /tmp/research-task.md /tmp/deep-research-run /Users/xpy/Documents/RichardHub/Git --sequential
+./scripts/opencode-research-runner.sh high_quality /tmp/research-task.md /tmp/deep-research-run /Users/xpy/Documents/RichardHub/Git --sequential
 ```
 
 ## Inputs
@@ -59,7 +59,7 @@ To run a subset:
 
 ```bash
 DEEP_RESEARCH_AGENTS="planner_agent,source_agent,analyst_agent,writer_agent,reviewer_agent" \
-  Skills/deep-research-skill/scripts/opencode-research-runner.sh balanced /tmp/research-task.md
+  ./scripts/opencode-research-runner.sh balanced /tmp/research-task.md
 ```
 
 ## Model Routing

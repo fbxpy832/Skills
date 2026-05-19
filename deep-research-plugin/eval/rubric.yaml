@@ -1,4 +1,4 @@
-# Eval Rubric — Deep Research Skill
+# Eval Rubric — Deep Research Multi-host Distribution Package
 # Defines pass/fail criteria for each eval task type.
 
 version: "1.0"
@@ -18,6 +18,17 @@ global_criteria:
     - has_run_completed: "events.ndjson contains at least one event with phase=run and status=completed"
     - has_agent_events: "events.ndjson contains agent_started events for enabled agents"
     - valid_json: "each line of events.ndjson is valid JSON"
+    - event_count_matches: "run-summary.md event count equals events.ndjson line count"
+
+  package_valid:
+    - main_points_to_js: "package.json main field points to existing .js file"
+    - index_importable: "index.js can be imported by Node without error"
+    - plugin_yaml_parsable: "plugin.yaml is valid YAML"
+    - no_forbidden_docs: "docs do not reference 'opencode plugin install', 'opencode plugin list', or 'Skills/deep-research-skill'"
+
+  security_valid:
+    - no_api_keys_in_artifacts: "artifacts do not contain API key patterns"
+    - events_no_secrets: "events.ndjson does not contain API keys or tokens"
 
   model_routing_valid:
     - run_summary_has_mapping: "run-summary.md lists requested_model for each agent"

@@ -1,0 +1,8 @@
+config.env
+.env
+*.key
+outputs/
+runs/
+*.log
+.DS_Store
+node_modules/

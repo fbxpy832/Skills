@@ -1,162 +1,167 @@
-# Deep Research Plugin 安装手册
+# Deep Research Multi-host Distribution Package — 安装手册
 
-## 适用宿主
+本包不是单一 OpenCode 插件。**多宿主分发包**意味着同一套配置、runner、搜索和输出协议，通过不同 host adapter 供多个宿主使用。
 
-| 宿主 | 安装方式 | 功能 |
+## 支持的宿主
+
+| 宿主 | 安装方式 | 入口 |
 |------|---------|------|
-| **OpenCode CLI / TUI** | 本地插件安装 | 完整工作流、斜杠命令触发 |
-| **Codex** | 通用 Runner 调用 | 自动编排、多轮执行 |
-| **Claude Code** | 通用 Runner 调用 | 对话中触发研究任务 |
-| **终端 / CI / 脚本** | 直接执行 Runner | 自动化研究流水线 |
+| **OpenCode** | 官方 plugin 安装 | `index.js` → `scripts/opencode-research-runner.sh` |
+| **Codex** | SKILL.md + 通用 Runner | `scripts/generic-research-runner.sh` |
+| **Claude Code** | 通用 Runner | `scripts/generic-research-runner.sh` |
+| **CloudCode / GUI / TU** | 通用 Runner | `scripts/generic-research-runner.sh` |
+| **终端 / CI** | 直接执行脚本 | `scripts/*.sh` |
 
 ---
 
-## 方式一：OpenCode 用户（推荐）
+## Quick Start（所有宿主通用）
 
-### 1. 获取插件
-
-```bash
-# 从内部仓库克隆（替换为实际地址）
-git clone <内部仓库地址> /tmp/deep-research-plugin
-
-# 或通过内部文件共享接收压缩包
-# 解压到任意目录，例如 ~/.opencode/plugins/deep-research-plugin/
-```
-
-### 2. 安装
+### 1. 准备
 
 ```bash
-opencode plugin install /path/to/deep-research-plugin
+# 获取分发包
+git clone <内部仓库地址> deep-research-plugin
+# 或解压 zip 到任意目录
+cd deep-research-plugin
 ```
 
-验证成功：
+### 2. 配置
 
 ```bash
-opencode plugin list   # 应显示 deep-research-plugin
+./scripts/setup.sh
 ```
 
-### 3. 首次配置
+setup 会生成本机私有配置（宿主无关，多宿主共享读取）：
+
+```
+~/.config/deep-research-skill/config.env
+```
+
+配置内容包括：
+- 各 agent 模型来源（provider/model 路由）
+- 搜索 API key（Brave/Bocha/Exa，至少一个）
+- 输出目录（DEEP_RESEARCH_OUTPUT_DIR）
+
+> **注意**：
+> - `config.env` 不得提交到 git（已在 .gitignore 中）
+> - 权限应为 `0600`（`chmod 600 ~/.config/deep-research-skill/config.env`）
+> - 可通过 `DEEP_RESEARCH_CONFIG_ENV` 自定义配置文件路径
+> - 可通过 `DEEP_RESEARCH_SKILL_CONFIG_DIR` 自定义配置目录
+
+### 3. 验证
 
 ```bash
-# 运行 setup 配置搜索 API key 和模型来源
-/path/to/deep-research-plugin/scripts/setup.sh
+# Dry-run 验证所有产物
+./scripts/generic-research-runner.sh cost_saving /tmp/test-task.md /tmp/test-out . --dry-run --sequential
+
+# 运行 eval
+./eval/run-eval.sh --dry-run --runner generic
+
+# 检查产物
+ls /tmp/test-out/
 ```
-
-配置项：
-- **搜索 API Key**：Brave Search（英文搜索主力）、博查（中文主力）、Exa（英文语义搜索），至少配置一个
-- **模型来源**：选择各 agent 使用哪个 provider/model
-- **输出目录**：研究报告保存位置（支持相对路径，默认为 `~/Documents/DeepResearch`）
-
-setup 是交互式的，会生成 `config.env` 到插件目录下。（不要提交到 git，已在 .gitignore 中）
-
-### 4. 使用
-
-在 OpenCode 对话中触发：
-
-```
-/opencode-deep-research 郑州停车充电需求分析
-```
-
-或直接描述研究需求，OpenCode 会自动加载 skill。
 
 ---
 
-## 方式二：Codex 用户（通用 Runner）
+## OpenCode Adapter
 
-无需安装插件，直接调用通用 Runner：
+### 安装（官方 plugin 方式）
 
 ```bash
-# 1. 创建任务文件
-cat > /tmp/task.md << 'EOF'
-# 研究任务
-
-分析郑州郑东新区白沙组团的停车和充电需求，坐标 34.752, 113.793。
-生成决策分析报告。
-EOF
-
-# 2. 执行研究
-./deep-research-plugin/scripts/generic-research-runner.sh \
-  high_quality \
-  /tmp/task.md \
-  /tmp/deep-research-output \
-  /path/to/your/project \
-  --sequential
-
-# 3. 查看结果
-cat /tmp/deep-research-output/run-summary.md
+opencode plugin /path/to/deep-research-plugin --force
 ```
 
-产出文件：
-| 文件 | 用途 |
+全局安装：
+
+```bash
+opencode plugin /path/to/deep-research-plugin --global --force
+```
+
+或手动编辑 `~/.opencode/opencode.json`：
+
+```json
+{
+  "plugin": ["/path/to/deep-research-plugin"]
+}
+```
+
+OpenCode 官方 loader 通过 `package.json` → `main` → `index.js` 加载插件。`index.js` 提供 `deep_research_run` tool 和 runner 封装。
+
+### 使用
+
+通过 OpenCode 对话触发 `/opencode-deep-research`，或直接调用 runner：
+
+```bash
+./scripts/opencode-research-runner.sh high_quality /tmp/task.md /tmp/out . --sequential
+```
+
+---
+
+## Codex Adapter
+
+作为 skill 使用：复制或链接 SKILL.md 到 Codex skills 目录。Codex 通过 autoloop 调用通用 Runner：
+
+```bash
+./scripts/generic-research-runner.sh high_quality /tmp/task.md /tmp/out /path/to/repo --sequential
+```
+
+Codex 只读取 compact summary（`run-summary.md`），不直接执行 agent。
+
+---
+
+## Claude Code / CloudCode / GUI / TU
+
+统一通过通用 Runner 接入，宿主负责真实 agent 调用，遵守 `references/host-adapter-contract.md`。
+
+```bash
+./scripts/generic-research-runner.sh high_quality /tmp/task.md /tmp/out . --sequential
+```
+
+---
+
+## Terminal / CI
+
+```bash
+# Dry-run 验证配置
+./scripts/generic-research-runner.sh high_quality /tmp/task.md /tmp/out . --dry-run --sequential
+
+# Eval 质量检查
+./eval/run-eval.sh --dry-run --runner generic
+```
+
+每个 runner 运行后必须产出：
+
+| 文件 | 说明 |
 |------|------|
-| `run-summary.md` | 运行摘要（整体状态） |
-| `execution-context.md` | 执行上下文（配置、参数） |
-| `source_failure_log.md` | 来源失败日志 |
-| `events.ndjson` | 事件流（机器可读） |
+| `run-summary.md` | 运行摘要 |
+| `execution-context.md` | 执行上下文 |
+| `source_failure_log.md` | 来源失败记录 |
+| `events.ndjson` | 事件流（每行合法 JSON） |
 
 ---
 
-## 方式三：终端直接使用
+## 更新
 
 ```bash
-# 设置环境变量
-export BRAVE_API_KEY="你的key"
-export BOCHA_API_KEY="你的key"     # 可选
-export DEEP_RESEARCH_OUTPUT_DIR="/tmp/research-out"
-
-# 执行研究（dry-run 模式预览，不实际调用 agent）
-./deep-research-plugin/scripts/generic-research-runner.sh \
-  high_quality /tmp/task.md /tmp/out . --dry-run --sequential
+cd deep-research-plugin
+git pull
+opencode plugin /path/to/deep-research-plugin --force
 ```
-
-去掉 `--dry-run` 即实际调用 agent 执行研究（需要对应宿主的 agent 调用命令配置）。
-
----
-
-## 环境要求
-
-- **Shell**：bash 3.2+（macOS 默认版本兼容）
-- **Python**：3.7+（用于 JSON 转义和 Brave API 结果解析）
-- **curl**：用于搜索 API 调用
-- **网络**：能访问 Brave Search API 或博查 AI Search API（至少一个）
 
 ---
 
 ## 故障排查
 
-### `search.sh` 报错：Brave API 不可用
+| 问题 | 解决 |
+|------|------|
+| 搜索 API 不可用 | 检查代理：`export https_proxy=http://127.0.0.1:7897` |
+| `HOST_RUN_CMD not set` | 通用 Runner 默认 dry-run，实际执行需设置宿主命令 |
+| setup.sh 权限问题 | `chmod +x ./scripts/*.sh` |
+| config.env 未找到 | 运行 `./scripts/setup.sh` 生成配置 |
 
-检查代理配置（若需要）：
+## 环境要求
 
-```bash
-export https_proxy=http://127.0.0.1:7897
-./deep-research-plugin/scripts/search.sh "测试搜索"
-```
-
-### `generic-research-runner.sh` 报错：HOST_RUN_CMD not set
-
-通用 Runner 默认在 dry-run 模式运行。实际执行需要设置 `HOST_RUN_CMD` 环境变量，指向宿主的 agent 调用命令：
-
-```bash
-# OpenCode 宿主
-export HOST_RUN_CMD="opencode run --model"
-
-# Codex 宿主
-export HOST_RUN_CMD="codex run"
-```
-
-### setup.sh 权限问题
-
-```bash
-chmod +x /path/to/deep-research-plugin/scripts/*.sh
-```
-
----
-
-## 更新插件
-
-```bash
-cd /path/to/deep-research-plugin
-git pull
-opencode plugin install . --force
-```
+- **Shell**：bash 3.2+
+- **Python**：3.7+
+- **Node**：18+（仅 OpenCode plugin 安装需要）
+- **curl**：用于搜索 API

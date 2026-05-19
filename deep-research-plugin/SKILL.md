@@ -222,13 +222,11 @@ source_plan 可作为内部过程，不强制写入报告正文。但最终交�
 需要从 OpenCode 直接运行 Deep Research 时，使用：
 
 ```bash
-Skills/deep-research-skill/scripts/opencode-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR]
-```
+./scripts/opencode-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR]
 
 示例：
 
-```bash
-Skills/deep-research-skill/scripts/opencode-research-runner.sh high_quality /tmp/research-task.md /tmp/deep-research-run /path/to/project
+./scripts/opencode-research-runner.sh high_quality /tmp/research-task.md /tmp/deep-research-run /path/to/project
 ```
 
 该 runner 会按 `mode + agent` 调用 `scripts/model-router.sh`，默认采用分阶段并发：planner 先跑，source 与 long_context 并发，analyst 与 scenario 并发，writer 汇总，reviewer 最后审计。受限环境可用 `--sequential` 回退。详见 [references/opencode-runner.md](references/opencode-runner.md)。
@@ -236,7 +234,7 @@ Skills/deep-research-skill/scripts/opencode-research-runner.sh high_quality /tmp
 对于 Codex、Claude Code、CloudCode、GUI、TU/terminal 及其他外部编排器，使用宿主无关的通用 runner：
 
 ```bash
-Skills/deep-research-skill/scripts/generic-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR]
+./scripts/generic-research-runner.sh MODE TASK_FILE [OUTPUT_DIR] [PROJECT_DIR]
 ```
 
 该通用 runner 不依赖任何特定宿主，生成完整的 prompt、artifact 和 events.ndjson 事件流，适合作为外部编排器的 prompt/artifact 生成层。详见 [references/host-adapter-contract.md](references/host-adapter-contract.md)。
