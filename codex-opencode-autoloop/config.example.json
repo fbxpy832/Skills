@@ -1,0 +1,62 @@
+{
+  "opencode_command": "opencode",
+  "opencode_run_args": ["run"],
+  "max_rounds": 5,
+  "test_command": "",
+  "allow_dependency_install": false,
+  "allow_network": false,
+  "allow_large_refactor": false,
+  "stop_on_high_risk_change": true,
+  "status_update_interval_seconds": 5,
+  "project_write_scope": ".",
+  "review_policy": {
+    "require_tests_pass": true,
+    "require_no_unrelated_changes": true,
+    "require_security_check": true,
+    "require_final_summary": true
+  },
+  "oma": {
+    "enabled": true,
+    "mode": "auto",
+    "trigger_test": true,
+    "prefer_oma_over_plain_opencode": true,
+    "developer_agent": "",
+    "planner_agent": "",
+    "review_agent": "",
+    "tester_agent": "",
+    "repair_agent": "",
+    "fallback_to_plain_opencode": true,
+    "allow_agent_config_read": true,
+    "allow_agent_config_write": false,
+    "allow_model_recommendation": true,
+    "allow_model_auto_change": false,
+    "expected_plan": "opencode_go",
+    "model_policy": {
+      "planner": {
+        "preferred_profile": "high_reasoning_low_code",
+        "suggested_models": [],
+        "must_not_auto_change": true
+      },
+      "developer": {
+        "preferred_profile": "strong_coding_stable_context",
+        "suggested_models": [],
+        "must_not_auto_change": true
+      },
+      "reviewer": {
+        "preferred_profile": "high_reasoning_strict_review",
+        "suggested_models": [],
+        "must_not_auto_change": true
+      },
+      "tester": {
+        "preferred_profile": "fast_low_cost",
+        "suggested_models": [],
+        "must_not_auto_change": true
+      },
+      "repair": {
+        "preferred_profile": "coding_patch_focused",
+        "suggested_models": [],
+        "must_not_auto_change": true
+      }
+    }
+  }
+}
