@@ -1,0 +1,31 @@
+{
+  "opencode_command": "opencode",
+  "codex_command": "codex",
+  "max_review_rounds": 2,
+  "opencode_timeout_seconds": 1800,
+  "codex_timeout_seconds": 900,
+  "test_commands": [],
+  "lint_commands": [],
+  "build_commands": [],
+  "review_mode": "diff-only",
+  "auto_commit": false,
+  "require_clean_git_before_start": true,
+  "logs_dir": "logs",
+  "opencode_flags": [
+    "--dangerously-skip-permissions"
+  ],
+  "codex_flags": [
+    "--dangerously-bypass-approvals-and-sandbox"
+  ],
+  "diff_max_lines": 500,
+  "ignore_patterns": [
+    "node_modules/*",
+    "dist/*",
+    "build/*",
+    ".next/*",
+    "venv/*",
+    ".git/*",
+    "__pycache__/*"
+  ],
+  "log_retention_days": 30
+}

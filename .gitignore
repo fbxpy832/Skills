@@ -6,3 +6,13 @@ entities.json
 .deep-research-runs/
 
 .DS_Store
+node_modules/
+skill-hub/node_modules/
+.superpowers/
+
+# OpenCodeAutoLoop v2 runtime artifacts
+docs/
+logs/
+opencode-autoloop/.autoloop/state.json
+opencode-autoloop/.autoloop/last_review.md
+opencode-autoloop/.autoloop/last_prompt.md
