@@ -13,6 +13,6 @@ skill-hub/node_modules/
 # OpenCodeAutoLoop v2 runtime artifacts
 docs/
 logs/
-opencode-autoloop/.autoloop/state.json
-opencode-autoloop/.autoloop/last_review.md
-opencode-autoloop/.autoloop/last_prompt.md
+.autoloop/state.json
+.autoloop/last_review.md
+.autoloop/last_prompt.md

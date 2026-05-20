@@ -82,13 +82,28 @@ def phase_header(name: str):
 
 # -- Constants --------------------------------------------------
 
-TOOL_ROOT    = Path(__file__).resolve().parent       # opencode-autoloop/
-CONFIG_FILE  = TOOL_ROOT / ".autoloop" / "config.json"
-STATE_FILE   = TOOL_ROOT / ".autoloop" / "state.json"
-LAST_REVIEW  = TOOL_ROOT / ".autoloop" / "last_review.md"
-LAST_PROMPT  = TOOL_ROOT / ".autoloop" / "last_prompt.md"
+TOOL_ROOT = Path(__file__).resolve().parent          # opencode-autoloop/
+
+# Defaults (recomputed via _recompute_paths when project_root changes)
+CONFIG_FILE = TOOL_ROOT / ".autoloop" / "config.json"
+STATE_FILE  = TOOL_ROOT / ".autoloop" / "state.json"
+LAST_REVIEW = TOOL_ROOT / ".autoloop" / "last_review.md"
+LAST_PROMPT = TOOL_ROOT / ".autoloop" / "last_prompt.md"
 
 ANSI_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
+
+# -- Path recomputation -----------------------------------------
+
+
+def _recompute_paths():
+    """Sync CONFIG_FILE / STATE_FILE / etc. to current project_root."""
+    global CONFIG_FILE, STATE_FILE, LAST_REVIEW, LAST_PROMPT
+    root = get_project_root()
+    CONFIG_FILE = root / ".autoloop" / "config.json"
+    STATE_FILE  = root / ".autoloop" / "state.json"
+    LAST_REVIEW = root / ".autoloop" / "last_review.md"
+    LAST_PROMPT = root / ".autoloop" / "last_prompt.md"
 
 
 # -- Helpers ----------------------------------------------------
@@ -119,7 +134,7 @@ def now_iso() -> str:
 
 
 def ensure_dirs():
-    for d in [TOOL_ROOT / ".autoloop", get_docs_dir(), get_logs_dir()]:
+    for d in [CONFIG_FILE.parent, get_docs_dir(), get_logs_dir()]:
         d.mkdir(parents=True, exist_ok=True)
 
 
@@ -144,6 +159,7 @@ _project_root_override: Optional[Path] = None
 def set_project_root(path: Path):
     global _project_root_override
     _project_root_override = path.resolve()
+    _recompute_paths()
 
 
 def get_project_root() -> Path:
@@ -226,7 +242,11 @@ DEFAULT_CONFIG = {
     "logs_dir": "logs",
     "log_retention_days": 30,
     "opencode_flags": ["--dangerously-skip-permissions"],
-    "codex_flags": ["--dangerously-bypass-approvals-and-sandbox"],
+    "codex_flags": [
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-m", "gpt-5.5",
+        "-c", "model_reasoning_effort=\"medium\""
+    ],
     "diff_max_lines": 500,
     "ignore_patterns": [
         "node_modules/*", "dist/*", "build/*", ".next/*",
@@ -284,7 +304,14 @@ class Runtime:
     def __init__(self, args):
         self.raw = init_config()
         if args.max_rounds is not None:
+            if not (1 <= args.max_rounds <= 3):
+                die(f"--max-rounds must be between 1 and 3, got {args.max_rounds}")
             self.raw["max_review_rounds"] = args.max_rounds
+        # Validate config value too (user may have edited config.json)
+        mr = self.raw.get("max_review_rounds", 2)
+        if not (1 <= mr <= 3):
+            warn(f"max_review_rounds={mr} in config is out of range [1,3]. Clamping to 2.")
+            self.raw["max_review_rounds"] = 2
         if args.opencode_timeout is not None:
             self.raw["opencode_timeout_seconds"] = args.opencode_timeout
         if args.codex_timeout is not None:
@@ -356,17 +383,26 @@ def preflight_check(config: Runtime):
 
 _RUNTIME_GENERATED = {".autoloop/", "docs/", "logs/"}
 
-_IGNORE_GLOBS = {"*.lock", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
-                 "node_modules", "dist", "build", ".next", "venv", ".git",
-                 "__pycache__", ".DS_Store", "*.pyc", "*.pyo"}
 
+def _rel_path(p: str) -> str:
+    """Normalize a git-returned path to project_root-relative.
 
-def _glob_to_shell(p: str) -> str:
-    """Convert a glob pattern like 'node_modules/*' to a shell-safe pathspec."""
-    if p.endswith("/*"):
-        return p[:-2]
-    if p.startswith("*."):
-        return f"*.{p[2:]}"
+    Git commands return paths relative to the repo root, not cwd.
+    This resolves the path against the repo root, then relativizes it
+    to the current project_root.
+    """
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=10,
+            cwd=get_project_root()
+        )
+        repo_root = r.stdout.strip()
+        if repo_root:
+            abs_path = (Path(repo_root) / p).resolve()
+            return str(abs_path.relative_to(get_project_root().resolve()))
+    except (ValueError, OSError, subprocess.SubprocessError):
+        pass
     return p
 
 
@@ -378,51 +414,32 @@ def is_git_repo() -> bool:
 
 
 def is_working_tree_clean() -> bool:
-    r = subprocess.run(["git", "status", "--porcelain"],
+    r = subprocess.run(["git", "status", "--porcelain", "--", "."],
                        capture_output=True, text=True, cwd=get_project_root())
     return r.stdout.strip() == ""
 
 
 def get_dirty_files() -> list:
-    r = subprocess.run(["git", "status", "--porcelain"],
+    r = subprocess.run(["git", "status", "--porcelain", "--", "."],
                        capture_output=True, text=True, cwd=get_project_root())
-    lines = r.stdout.strip().split("\n")
     dirty = []
-    for line in lines:
-        if not line.strip():
+    for line in r.stdout.split("\n"):
+        if not line:
             continue
+        # porcelain: XX path (2 status columns + space + path)
         path = line[3:].strip()
-        dirty.append(path)
+        if path:
+            dirty.append(_rel_path(path))
     return dirty
 
 
 def is_working_tree_clean_except_tool() -> bool:
+    """Check if working tree is clean except for runtime-generated files."""
     dirty = get_dirty_files()
-    try:
-        tool_prefix = str(TOOL_ROOT.relative_to(get_project_root())) + "/"
-    except ValueError:
-        tool_prefix = ""
     for path in dirty:
-        if tool_prefix and not path.startswith(tool_prefix):
-            return False
-        if tool_prefix:
-            relative = path[len(tool_prefix):]
-            if not any(relative == d.rstrip("/") or relative.startswith(d) for d in _RUNTIME_GENERATED):
-                return False
-        else:
+        if not any(path == d.rstrip("/") or path.startswith(d) for d in _RUNTIME_GENERATED):
             return False
     return True
-
-
-def _git_pathspec_excludes(patterns: list) -> list:
-    """Convert ignore patterns to git pathspec excludes."""
-    excludes = []
-    for p in patterns:
-        p = p.strip()
-        if not p:
-            continue
-        excludes.append(f":(exclude){p}")
-    return excludes
 
 
 def get_diff_stat() -> str:
@@ -490,13 +507,16 @@ def _maybe_truncate_section(section: list, limit: int) -> list:
 
 
 def get_changed_files() -> str:
-    r = subprocess.run(["git", "diff", "--name-only"],
+    r = subprocess.run(["git", "diff", "--name-only", "--", "."],
                        capture_output=True, text=True, cwd=get_project_root())
-    return r.stdout.strip() or "(none)"
+    raw = r.stdout.strip()
+    if not raw:
+        return "(none)"
+    return "\n".join(_rel_path(l) for l in raw.split("\n") if l)
 
 
 def _diff_lines_added_removed() -> Tuple[int, int]:
-    r = subprocess.run(["git", "diff", "--numstat"],
+    r = subprocess.run(["git", "diff", "--numstat", "--", "."],
                        capture_output=True, text=True, cwd=get_project_root())
     added = 0
     removed = 0
@@ -522,21 +542,15 @@ _SKIP_EXTENSIONS = {".pyc", ".pyo", ".so", ".dylib", ".dll", ".exe",
 
 def get_untracked_files() -> list:
     r = subprocess.run(
-        ["git", "ls-files", "--others", "--exclude-standard"],
+        ["git", "ls-files", "--others", "--exclude-standard", "--", "."],
         capture_output=True, text=True, cwd=get_project_root()
     )
     lines = r.stdout.strip().split("\n")
-    project_root = get_project_root()
-    try:
-        tool_rel = str(TOOL_ROOT.relative_to(project_root)) + "/"
-    except ValueError:
-        tool_rel = ""
     result = []
     for l in lines:
         if not l:
             continue
-        if tool_rel and l.startswith(tool_rel):
-            continue
+        l = _rel_path(l)
         if any(l.startswith(d) for d in _RUNTIME_GENERATED):
             continue
         ext = Path(l).suffix.lower()
@@ -547,26 +561,27 @@ def get_untracked_files() -> list:
 
 
 def get_new_file_contents(files: list, max_bytes: int = 50000) -> str:
+    """Read content of new untracked files for review packet."""
     parts = []
-    root = get_project_root()
-    tool_rel = str(TOOL_ROOT) + "/"
+    root = get_project_root().resolve()
     total = 0
     for f in files:
-        filepath = root / f
-        fp_str = str(filepath.resolve())
-        if fp_str.startswith(tool_rel):
+        filepath = (root / f).resolve()
+        try:
+            rel = str(filepath.relative_to(root))
+        except ValueError:
             continue
         if not filepath.exists():
             continue
         try:
             content = filepath.read_text()
             if total + len(content) > max_bytes:
-                parts.append(f"\n### {f} (omitted: packet size limit)\n")
+                parts.append(f"\n### {rel} (omitted: packet size limit)\n")
                 break
             total += len(content)
-            parts.append(f"\n### {f}\n```\n{content}\n```\n")
+            parts.append(f"\n### {rel}\n```\n{content}\n```\n")
         except Exception:
-            parts.append(f"\n### {f}\n(unable to read file)\n")
+            parts.append(f"\n### {rel}\n(unable to read file)\n")
     return "\n".join(parts)
 
 
@@ -1167,6 +1182,14 @@ def show_status():
     print(f"  opencode: {'available' if shutil.which(config.get('opencode_command', 'opencode')) else _c('NOT FOUND', _Colors.RED)}")
     print(f"  codex:    {'available' if shutil.which(config.get('codex_command', 'codex')) else _c('NOT FOUND', _Colors.RED)}")
     print(f"  git:      {'available' if shutil.which('git') else _c('NOT FOUND', _Colors.RED)}")
+    print()
+    print(f"  Review rounds:    {config.get('max_review_rounds', 2)} (1-3)")
+    print(f"  Review mode:      {config.get('review_mode', 'diff-only')}")
+    print(f"  OpenCode flags:   {' '.join(config.get('opencode_flags', []))}")
+    print(f"  Codex flags:      {' '.join(config.get('codex_flags', []))}")
+    print(f"  OpenCode timeout: {config.get('opencode_timeout_seconds', 1800)}s")
+    print(f"  Codex timeout:    {config.get('codex_timeout_seconds', 900)}s")
+    print(f"  Log retention:    {config.get('log_retention_days', 30)} days")
 
 
 # -- Main Loop --------------------------------------------------
@@ -1581,6 +1604,11 @@ def run_review_only(task: str, rt: Runtime, args):
     codex_timeout = rt.get("codex_timeout_seconds", 900)
     exit_code, stdout, stderr = run_codex(codex_prompt, codex_log, timeout=codex_timeout)
 
+    if exit_code == 124:
+        die(f"Codex review timed out after {codex_timeout}s. See {codex_log}")
+    elif exit_code != 0:
+        die(f"Codex review failed (exit {exit_code}). stderr: {stderr[:300]}\nSee {codex_log}")
+
     verdict = parse_codex_verdict(stdout)
     info(f"Codex Verdict: {_c(verdict['verdict'], _Colors.CYAN)}")
     if verdict["must_fix"]:
@@ -1683,8 +1711,10 @@ Phases:
     if args.project_root:
         set_project_root(Path(args.project_root))
         info(f"Project root: {get_project_root()}")
+    else:
+        _recompute_paths()  # sync paths to cwd
 
-    # Handle --config: change CONFIG_FILE globally
+    # Handle --config: override CONFIG_FILE (after _recompute_paths sets default)
     global CONFIG_FILE
     if args.config:
         CONFIG_FILE = Path(args.config).resolve()
