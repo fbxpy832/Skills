@@ -1,0 +1,24 @@
+# Technical Route — Eval Task
+task_type: technical_route
+title: "端侧AI车牌识别方案技术选型评估"
+description: >
+  评估边缘计算设备上部署车牌识别模型的技术方案，
+  对比YOLO/OCR/轻量CNN等路线，考虑精度、延迟、成本和部署复杂度。
+  需要检索最新论文和产品进展。
+mode: high_quality
+expected_agents:
+  - planner_agent
+  - source_agent
+  - analyst_agent
+  - writer_agent
+  - reviewer_agent
+expected_outputs:
+  - run-summary.md
+  - execution-context.md
+  - source_failure_log.md
+  - events.ndjson
+success_criteria:
+  - model_routing_has_all_agents
+  - source_failure_log_exists
+  - events_contain_run_started
+  - events_contain_run_completed

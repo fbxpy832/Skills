@@ -1,0 +1,24 @@
+# Government Report — Eval Task
+task_type: government_report
+title: "城市智慧停车基础设施建设政策研究报告"
+description: >
+  梳理国家及地方层面关于城市停车基础设施建设的政策法规、
+  补贴标准和推进计划，形成可供政府汇报用的政策研究材料。
+mode: high_quality
+expected_agents:
+  - planner_agent
+  - source_agent
+  - long_context_agent
+  - analyst_agent
+  - writer_agent
+  - reviewer_agent
+expected_outputs:
+  - run-summary.md
+  - execution-context.md
+  - source_failure_log.md
+  - events.ndjson
+success_criteria:
+  - model_routing_has_all_agents
+  - source_failure_log_exists
+  - events_contain_run_started
+  - events_contain_run_completed

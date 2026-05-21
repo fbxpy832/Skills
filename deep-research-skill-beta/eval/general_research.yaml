@@ -1,0 +1,23 @@
+# General Research — Eval Task
+task_type: general_research
+title: "2025年AI Agent技术发展趋势概述"
+description: >
+  概述AI Agent领域的技术发展趋势，包括多Agent协作、
+  工具调用、记忆管理、安全对齐等方向的最新进展。
+mode: balanced
+expected_agents:
+  - planner_agent
+  - source_agent
+  - analyst_agent
+  - writer_agent
+  - reviewer_agent
+expected_outputs:
+  - run-summary.md
+  - execution-context.md
+  - source_failure_log.md
+  - events.ndjson
+success_criteria:
+  - model_routing_has_all_agents
+  - source_failure_log_exists
+  - events_contain_run_started
+  - events_contain_run_completed
