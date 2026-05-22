@@ -408,6 +408,42 @@ if [[ "$confirm" =~ ^[Nn] ]]; then
 fi
 
 # ============================================================================
+# Phase 3.5: 知识库路径配置（自动检测 + 确认）
+# ============================================================================
+
+echo ""
+echo "=========================================="
+echo "知识库路径配置"
+echo "=========================================="
+echo ""
+
+# Obsidian Vault: auto-detect from obsidian-article-extractor config, then common path
+DETECTED_VAULT=""
+if [ -f "$HOME/.config/obsidian-article-extractor/vault-path" ]; then
+  DETECTED_VAULT=$(cat "$HOME/.config/obsidian-article-extractor/vault-path" 2>/dev/null || echo "")
+fi
+if [ -z "$DETECTED_VAULT" ] && [ -d "$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub" ]; then
+  DETECTED_VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub"
+fi
+echo "  Obsidian Vault 路径用于搜索本地 Markdown 笔记和技术 Wiki。"
+obsidian_vault="$(prompt_val "Obsidian Vault 路径" "${DETECTED_VAULT:-}")"
+
+# NotebookLM: auto-detect notebook ID from context.json
+DETECTED_NOTEBOOK=""
+if [ -f "$HOME/.notebooklm/context.json" ]; then
+  DETECTED_NOTEBOOK=$(python3 -c "import json; print(json.load(open('$HOME/.notebooklm/context.json')).get('notebook_id',''))" 2>/dev/null || echo "")
+fi
+echo "  NotebookLM Notebook ID 用于查询 AI 分析笔记。留空自动检测。"
+notebooklm_id="$(prompt_val "NotebookLM Notebook ID" "${DETECTED_NOTEBOOK:-auto}")"
+
+# Lark Wiki: check availability
+LARK_AVAILABLE="no"
+if command -v lark-cli &>/dev/null && [ -f "$HOME/.lark-cli/config.json" ]; then
+  LARK_AVAILABLE="yes"
+  echo "[检测] ✅ lark-cli 已就绪，飞书知识库将自动启用"
+fi
+
+# ============================================================================
 # Phase 4: 搜索 API Key
 # ============================================================================
 
@@ -482,6 +518,22 @@ HAIKU_DESC="${HAIKU_MODEL_ID:-}"
   echo "export DEEP_RESEARCH_MODEL_WRITER_AGENT=$(shell_quote "$writer_route")"
   echo "export DEEP_RESEARCH_MODEL_REVIEWER_AGENT=$(shell_quote "$reviewer_route")"
   echo ""
+
+  if [ -n "$obsidian_vault" ]; then
+    echo "# Obsidian Vault"
+    echo "export DEEP_RESEARCH_OBSIDIAN_VAULT_DIR=$(shell_quote "$obsidian_vault")"
+    echo ""
+  fi
+  if [ "$LARK_AVAILABLE" = "yes" ]; then
+    echo "# Lark/Feishu Wiki (auto-detected)"
+    echo "export DEEP_RESEARCH_LARK_ENABLED=true"
+    echo ""
+  fi
+  if [ -n "$notebooklm_id" ] && [ "$notebooklm_id" != "auto" ]; then
+    echo "# NotebookLM"
+    echo "export DEEP_RESEARCH_NOTEBOOKLM_NOTEBOOK_ID=$(shell_quote "$notebooklm_id")"
+    echo ""
+  fi
 
   if [ -n "$brave_key" ]; then
     echo "# Brave Search API"
