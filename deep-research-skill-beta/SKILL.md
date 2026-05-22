@@ -15,7 +15,7 @@ description: 深度研究决策工作流。用于企业经营决策、技术路�
 scripts/setup.sh
 ```
 
-配置项包括：各 agent 模型来源、搜索 API key（Brave/Bocha/Exa）、输出目录。
+配置项包括：各 agent 模型来源、搜索 API key（Brave/Bocha/Exa）、知识库路径（Obsidian Vault / NotebookLM）、输出目录。
 
 ## 使用方式
 
@@ -31,7 +31,7 @@ scripts/setup.sh
 scripts/setup.sh
 ```
 
-配置项包括：各 agent 模型来源、搜索 API key（Brave/Bocha/Exa）、输出目录。
+配置项包括：各 agent 模型来源、搜索 API key（Brave/Bocha/Exa）、知识库路径（Obsidian Vault / NotebookLM）、输出目录。
 
 安装后还需将 `scripts/` 目录添加到 $PATH 或使用绝对路径调用 search.sh、model-router.sh 等脚本。
 
@@ -42,14 +42,18 @@ deep-research-skill-beta/
 ├── SKILL.md                  # 触发入口
 ├── model-routing.yaml        # 模型路由配置
 ├── source-policy.yaml        # 来源策略配置
-├── scripts/                  # 6 个脚本
+├── scripts/                  # 10 个脚本
 │   ├── setup.sh
 │   ├── search.sh
+│   ├── knowledge-retrieval.sh    # 知识库检索统一入口 ← 新增
+│   ├── knowledge-obsidian.sh     # Obsidian Vault 适配器 ← 新增
+│   ├── knowledge-lark.sh         # 飞书知识库适配器 ← 新增
+│   ├── knowledge-notebooklm.sh   # NotebookLM 适配器 ← 新增
 │   ├── model-router.sh
 │   ├── generic-research-runner.sh
 │   ├── opencode-research-runner.sh
 │   └── install-opencode-providers.sh
-├── references/               # 15 份参考文档
+├── references/               # 16 份参考文档
 │   ├── workflow.md
 │   ├── task-classification.md
 │   ├── subagents.md
@@ -58,6 +62,7 @@ deep-research-skill-beta/
 │   ├── source-failure-log.md
 │   ├── quality-review.md
 │   ├── output-rules.md
+│   ├── knowledge-retrieval.md    # 知识库适配器协议 ← 新增
 │   ├── search-tools.md
 │   ├── execution-consistency.md
 │   ├── host-adapter-contract.md
