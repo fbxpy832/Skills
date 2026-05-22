@@ -44,6 +44,8 @@
 [ ] 已准备搜索词清单（经过去重和合并）
 [ ] 已声明本次研究预算（按任务类型查 search-tools.md 预算表）
 [ ] 已初始化搜索计数和缓存
+[ ] 已确认可用的知识库来源：Lark Wiki / NotebookLM / Obsidian Vault
+[ ] 已读 references/knowledge-retrieval.md（知识库适配器协议）
 ```
 
 检查清单未完成前，不得进入 Phase 2。
@@ -107,6 +109,28 @@ webfetch(format="markdown", url="https://cn.bing.com/search?q=KEYWORD")
 如果公开资料不足，写明“缺少可靠公开数据，需进一步核验”，并进入数据缺口清单。
 
 如果 web 搜索、外部检索、资料抓取或来源验证失败，必须记录 `source_failure_log`，并将 high_quality 报告降级为“离线初稿”或“待联网核验版”。
+
+### 知识库检索（与网页搜索并行执行）
+
+除了网页搜索外，source_agent 还须执行知识库检索以获取内部资料：
+
+1. 调用 `scripts/knowledge-retrieval.sh "关键词"`（自动检测可用来源）
+2. 对返回结果按 `source-policy.yaml` 中的来源类型进行分类和定级
+3. 知识库检索失败不影响网页搜索，反之亦然
+4. 各自记录 `source_failure_log`
+
+可用知识库来源：
+- **飞书知识库**（lark_wiki）：内部项目文档、技术文档、管理制度
+- **NotebookLM**（notebooklm）：AI 分析视角和来源材料
+- **Obsidian Vault**（obsidian/local_vault/local_wiki）：本地笔记、技术 Wiki
+
+来源等级映射：
+- 飞书正式文档 → A 级
+- 飞书笔记/草稿 → B 级
+- Obsidian 技术 Wiki → B/C 级（local_wiki）
+- Obsidian 工作笔记 → B/C 级（local_vault）
+- NotebookLM AI 分析 → C 级（model_reasoning）
+- NotebookLM 来源材料 → 按原类型定级
 
 ## Phase 3: 事实核验与反证扫描
 

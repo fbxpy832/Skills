@@ -57,6 +57,7 @@ required_subagents:
 - 标注数据获取时间。
 - 识别过期数据和低质量来源。
 - 不做最终判断。
+- 调用知识库检索（knowledge-retrieval.sh）获取内部资料。
 
 推荐模型：
 
@@ -74,6 +75,8 @@ retrieval_date:
 extracted_facts:
 reliability_notes:
 citation_ready_text:
+knowledge_sources_used: []    # 使用的知识库来源列表（lark_wiki/notebooklm/obsidian）
+knowledge_search_status:      # 知识库检索状态：success / partial_success / failed
 ```
 
 ## long_context_agent
