@@ -81,6 +81,31 @@
   - 推理可能基于过时训练数据
   - 不可将"应该是"写成"实际是"
 
+### 7. lark_wiki — 飞书知识库
+
+定义：飞书知识空间中的内部文档、技术资料、管理制度等。
+
+- `allowed_for_core_claims`: ⚠️ 有条件 — 需标注文档版本和审批状态
+- `default_level`: A — B
+- 适用：内部业务背景、项目上下文、技术方案、管理制度
+- 规则：
+  - 标注文档创建/更新时间
+  - 正式审批通过的文档可视为 A 级，草稿/个人笔记为 B 级
+  - 不是外部权威来源，涉及外部事实仍需外部核验
+  - 区分"文档宣称"与"已核验事实"
+
+### 8. notebooklm — NotebookLM 笔记本
+
+定义：Google NotebookLM 中用户笔记本的 AI 分析和来源材料。
+
+- `allowed_for_core_claims`: ⚠️ 有条件 — AI 分析需标注来源，来源材料可参考
+- `default_level`: C
+- 适用：分析视角补充、已有来源材料的快速参考
+- 规则：
+  - AI 分析回答属于 model_reasoning，不是事实来源
+  - 所有 NotebookLM 生成内容必须标注"NotebookLM 生成"
+  - 来源材料可视为 uploaded_files 级别
+
 ---
 
 ## Source Levels
@@ -169,7 +194,7 @@
 每条引用的完整格式：
 
 ```text
-来源类型: [external_authoritative/external_media/local_vault/local_wiki/uploaded_files/model_reasoning]
+来源类型: [external_authoritative/external_media/local_vault/local_wiki/uploaded_files/model_reasoning/lark_wiki/notebooklm]
 来源: [标题](URL)
 发布日期: YYYY-MM-DD / 未知
 获取日期: YYYY-MM-DD
@@ -256,7 +281,7 @@ source_agent 返回资料时必须包含：
 
 | 序号 | 字段 | 说明 |
 |------|------|------|
-| 1 | 来源类型 | external_authoritative / external_media / local_vault / local_wiki / uploaded_files / model_reasoning |
+| 1 | 来源类型 | external_authoritative / external_media / local_vault / local_wiki / uploaded_files / model_reasoning / lark_wiki / notebooklm |
 | 2 | 来源标题 | 资料标题 |
 | 3 | URL 或文件名 | 可追溯定位 |
 | 4 | 来源等级 | S / A / B / C / D |
