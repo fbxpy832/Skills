@@ -40,18 +40,17 @@ scripts/knowledge-obsidian.sh --query "深度学习 Transformer" --timeout 30
 `scripts/knowledge-retrieval.sh` 是知识库检索的规范入口，负责根据查询上下文路由到对应的适配器：
 
 ```bash
-scripts/knowledge-retrieval.sh --query "..." --source obsidian|lark|notebooklm|auto [opts...]
+scripts/knowledge-retrieval.sh --query "..." --sources obsidian,lark,notebooklm [opts...]
 ```
 
-当使用 `--source auto` 时，路由逻辑根据当前可用的适配器和环境变量自动选择。
+`--sources` 使用逗号分隔的源列表（如 `--sources lark,obsidian`）。不指定 `--sources` 时自动检测所有已配置的适配器。
 
 ### 1.3 自定义适配器接入
 
 如果你实现**自定义知识库检索适配器**（例如通过 MCP、宿主原生文件搜索、企业内部知识库 API），它必须遵循本合约。接入方式：
 
 - **方式 A（推荐）**：将你的检索工具包装为新的适配器，放在 `scripts/knowledge-<source>.sh`，遵循本合约的 CLI 接口和输出格式。
-- **方式 B**：设置环境变量 `DEEP_RESEARCH_KNOWLEDGE_CMD` 指向自定义脚本，该脚本必须接受 `--query`、`--count`、`--json`、`--dry-run`、`--timeout` 等标志。
-- **方式 C**：直接替换 `scripts/knowledge-retrieval.sh`，保持相同的 CLI 标志和输出格式。
+- **方式 B**：直接替换 `scripts/knowledge-retrieval.sh`，保持相同的 CLI 标志和输出格式。
 
 ---
 
@@ -247,27 +246,27 @@ scripts/knowledge-<source>.sh --check
 
 适配器的 `--check` 应验证以下内容：
 
-- **Obsidian Vault**：`DEEP_RESEARCH_VAULT_DIR` 环境变量是否已设置、路径是否存在、是否有读取权限。
-- **Lark/Feishu Wiki**：`LARK_APP_ID` 和 `LARK_APP_SECRET` 是否已设置、能否通过飞书 API 获取访问令牌、目标知识空间是否可访问。
-- **NotebookLM**：`NOTEBOOKLM_API_KEY` 或等效认证凭据是否已设置、API 端点是否可达。
+- **Obsidian Vault**：`DEEP_RESEARCH_OBSIDIAN_VAULT_DIR` 环境变量是否已设置、路径是否存在。
+- **Lark/Feishu Wiki**：`lark-cli` 是否已安装、`$HOME/.lark-cli/config.json` 是否存在（是否已登录）。
+- **NotebookLM**：`notebooklm` CLI 是否已安装。
 
 ### 4.3 检查示例
 
 ```bash
 # Obsidian Vault 可用性检查
 scripts/knowledge-obsidian.sh --check
-# 可用时: exit 0, stdout: "OK"
-# 不可用时: exit 1, stderr: "ERROR: DEEP_RESEARCH_VAULT_DIR 未设置或路径不存在"
+# 可用时: exit 0, stdout: "AVAILABLE: Obsidian Vault at <path>"
+# 不可用时: exit 1, stderr: "ERROR: DEEP_RESEARCH_OBSIDIAN_VAULT_DIR 未设置或路径不存在"
 
 # Lark Wiki 可用性检查
 scripts/knowledge-lark.sh --check
-# 可用时: exit 0, stdout: "OK"
-# 不可用时: exit 1, stderr: "ERROR: LARK_APP_ID 未设置"
+# 可用时: exit 0, stdout: "AVAILABLE: lark-cli ready"
+# 不可用时: exit 1, stderr: "ERROR: lark-cli 未安装或未配置"
 
 # NotebookLM 可用性检查
 scripts/knowledge-notebooklm.sh --check
-# 可用时: exit 0, stdout: "OK"
-# 不可用时: exit 1, stderr: "ERROR: NOTEBOOKLM_API_KEY 未设置"
+# 可用时: exit 0, stdout: "AVAILABLE: notebooklm CLI ready"
+# 不可用时: exit 1, stderr: "ERROR: notebooklm CLI 未安装"
 ```
 
 ---
@@ -408,15 +407,12 @@ format_<source>_readable() {
 
 | 变量 | 用途 | 必需 |
 |------|------|:----:|
-| `DEEP_RESEARCH_VAULT_DIR` | Obsidian Vault 根目录路径 | Obsidian 适配器必需 |
-| `LARK_APP_ID` | 飞书应用 ID | Lark 适配器必需 |
-| `LARK_APP_SECRET` | 飞书应用 Secret | Lark 适配器必需 |
+| `DEEP_RESEARCH_OBSIDIAN_VAULT_DIR` | Obsidian Vault 根目录路径 | Obsidian 适配器必需 |
+| `LARK_CLI_CONFIG` | lark-cli 配置文件路径（默认 `$HOME/.lark-cli/config.json`） | Lark 适配器可选 |
 | `LARK_WIKI_SPACE_ID` | 飞书知识空间 ID（可选，不指定则搜索所有可访问空间） | Lark 适配器可选 |
-| `NOTEBOOKLM_API_KEY` | NotebookLM API 密钥 | NotebookLM 适配器必需 |
-| `NOTEBOOKLM_PROJECT_ID` | NotebookLM 项目/笔记本 ID（可选） | NotebookLM 适配器可选 |
+| `DEEP_RESEARCH_NOTEBOOKLM_NOTEBOOK_ID` | NotebookLM 笔记本 ID（未设置时自动检测） | NotebookLM 适配器可选 |
 | `DEEP_RESEARCH_TIMEOUT` | 默认超时时间（秒） | 否（默认 15） |
 | `DEEP_RESEARCH_CACHE_DIR` | 缓存目录覆盖 | 否 |
-| `DEEP_RESEARCH_KNOWLEDGE_CMD` | 覆盖知识检索命令 | 否（用于自定义适配器） |
 
 ---
 

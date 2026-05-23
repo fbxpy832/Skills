@@ -21,10 +21,14 @@ RAW_JSON=false
 DRY_RUN=false
 CHECK=false
 QUERY=""
+TIMEOUT=15
+
+ORIGINAL_ARGS=("$@")
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --count)    COUNT="$2"; shift 2 ;;
+    --timeout)  TIMEOUT="$2"; shift 2 ;;
     --json)     RAW_JSON=true; shift ;;
     --dry-run)  DRY_RUN=true; shift ;;
     --check)    CHECK=true; shift ;;
@@ -50,6 +54,8 @@ if [ "$DRY_RUN" = true ]; then
   echo "DRY RUN: lark-cli docs +search \"$QUERY\" --limit $COUNT"
   exit 0
 fi
+
+source "$SCRIPT_DIR/lib/timeout-enforce.sh"
 
 # Step 1: Search for documents
 SEARCH_OUTPUT=$(lark-cli docs +search "$QUERY" --limit "$COUNT" 2>/dev/null || true)
@@ -94,7 +100,7 @@ while IFS= read -r LINE; do
   if [ "$RAW_JSON" = true ]; then
     [ "$FIRST_RESULT" = false ] && echo ","
     FIRST_RESULT=false
-    echo "{\"title\":$(printf '%s' "$TITLE" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"path\":$(printf '%s' "$URL" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"content_preview\":$(printf '%s' "$PREVIEW" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"source_level\":\"A\",\"source_subtype\":\"wiki_doc\",\"metadata\":{\"space\":\"$SPACE\",\"doc_token\":\"$DOC_TOKEN\"}}"
+    echo "{\"title\":$(printf '%s' "$TITLE" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"path\":$(printf '%s' "$URL" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"content_preview\":$(printf '%s' "$PREVIEW" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"source_level\":\"A\",\"source_subtype\":\"wiki_doc\",\"metadata\":{\"space\":$(printf '%s' "$SPACE" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"doc_token\":$(printf '%s' "$DOC_TOKEN" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))")}}"
   else
     echo "[lark_wiki] $TITLE"
     echo "  $URL"

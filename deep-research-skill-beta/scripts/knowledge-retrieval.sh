@@ -99,8 +99,16 @@ run_adapter() {
   local name="$1"
   local script="$SCRIPT_DIR/knowledge-$name.sh"
   if [ "$RAW_JSON" = true ]; then
-    [ "$FIRST" = false ] && echo ","
-    "$script" "$QUERY" --count "$COUNT" --json --timeout "$TIMEOUT" 2>/dev/null || echo "{\"source_type\":\"$name\",\"success\":false,\"results\":[]}"
+    # Capture to temp file first so timeout half-output is discarded on failure
+    local tmp_out="/tmp/knowledge-retrieval-$$-$name"
+    if "$script" "$QUERY" --count "$COUNT" --json --timeout "$TIMEOUT" >"$tmp_out" 2>/dev/null; then
+      [ "$FIRST" = false ] && echo ","
+      cat "$tmp_out"
+    else
+      [ "$FIRST" = false ] && echo ","
+      echo "{\"source_type\":\"$name\",\"success\":false,\"results\":[]}"
+    fi
+    rm -f "$tmp_out"
     FIRST=false
   else
     echo "=== $name ==="

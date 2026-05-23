@@ -20,10 +20,14 @@ RAW_JSON=false
 DRY_RUN=false
 CHECK=false
 QUERY=""
+TIMEOUT=15
+
+ORIGINAL_ARGS=("$@")
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --count)    COUNT="$2"; shift 2 ;;
+    --timeout)  TIMEOUT="$2"; shift 2 ;;
     --json)     RAW_JSON=true; shift ;;
     --dry-run)  DRY_RUN=true; shift ;;
     --check)    CHECK=true; shift ;;
@@ -54,6 +58,8 @@ if [ -z "$VAULT_DIR" ] || [ ! -d "$VAULT_DIR" ]; then
   exit 2
 fi
 
+source "$SCRIPT_DIR/lib/timeout-enforce.sh"
+
 if [ "$DRY_RUN" = true ]; then
   echo "DRY RUN: rg -l -i --glob '*.md' -g '!.obsidian' -g '!.git' \"$QUERY\" \"$VAULT_DIR\""
   exit 0
@@ -65,7 +71,7 @@ while IFS= read -r -d '' FILE; do
   if rg -l -i --max-count 1 "$QUERY" "$FILE" &>/dev/null; then
     FILES="$FILES|$FILE"
   fi
-done < <(find "$VAULT_DIR" -name '*.md' -not -path '*/.obsidian/*' -not -path '*/.git/*' -type f 2>/dev/null)
+done < <(find "$VAULT_DIR" -name '*.md' -not -path '*/.obsidian/*' -not -path '*/.git/*' -type f -print0 2>/dev/null)
 
 if [ -z "$FILES" ]; then
   if [ "$RAW_JSON" = true ]; then
@@ -113,7 +119,7 @@ for FILE in $FILES; do
   if [ "$RAW_JSON" = true ]; then
     [ "$FIRST_RESULT" = false ] && echo ","
     FIRST_RESULT=false
-    echo "{\"title\":$(printf '%s' "$TITLE" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"path\":$(printf '%s' "$REL_PATH" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"content_preview\":$(printf '%s' "$PREVIEW" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"source_level\":\"$SOURCE_LEVEL\",\"source_subtype\":\"$SOURCE_SUBTYPE\",\"metadata\":{\"file_date\":\"$MOD_DATE\",\"directory\":\"$DIR_NAME\"}}"
+    echo "{\"title\":$(printf '%s' "$TITLE" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"path\":$(printf '%s' "$REL_PATH" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"content_preview\":$(printf '%s' "$PREVIEW" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"source_level\":\"$SOURCE_LEVEL\",\"source_subtype\":\"$SOURCE_SUBTYPE\",\"metadata\":{\"file_date\":\"$MOD_DATE\",\"directory\":$(printf '%s' "$DIR_NAME" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))")}}"
   else
     echo "[obsidian:$SOURCE_SUBTYPE] $TITLE"
     echo "  $REL_PATH"

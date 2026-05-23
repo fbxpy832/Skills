@@ -21,11 +21,15 @@ RAW_JSON=false
 DRY_RUN=false
 CHECK=false
 QUERY=""
+TIMEOUT=15
 NOTEBOOK_ID="${DEEP_RESEARCH_NOTEBOOKLM_NOTEBOOK_ID:-}"
+
+ORIGINAL_ARGS=("$@")
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --count)    COUNT="$2"; shift 2 ;;
+    --timeout)  TIMEOUT="$2"; shift 2 ;;
     --json)     RAW_JSON=true; shift ;;
     --dry-run)  DRY_RUN=true; shift ;;
     --check)    CHECK=true; shift ;;
@@ -48,13 +52,15 @@ if ! command -v notebooklm &>/dev/null; then echo "ERROR: notebooklm CLI not fou
 
 # Auto-detect notebook ID from context.json if not set
 if [ -z "$NOTEBOOK_ID" ] && [ -f "$HOME/.notebooklm/context.json" ]; then
-  NOTEBOOK_ID=$(python3 -c "import json; print(json.load(open('$HOME/.notebooklm/context.json')).get('notebook_id',''))" 2>/dev/null || echo "")
+  NOTEBOOK_ID=$(NBLM_CTX="$HOME/.notebooklm/context.json" python3 -c "import json,os; print(json.load(open(os.environ['NBLM_CTX'])).get('notebook_id',''))" 2>/dev/null || echo "")
 fi
 
 if [ "$DRY_RUN" = true ]; then
   echo "DRY RUN: notebooklm ask \"$QUERY\" (notebook: ${NOTEBOOK_ID:-auto})"
   exit 0
 fi
+
+source "$SCRIPT_DIR/lib/timeout-enforce.sh"
 
 RESULTS_COUNT=0
 FIRST_RESULT=true
@@ -74,7 +80,7 @@ if [ -n "$ASK_RESULT" ]; then
   PREVIEW=$(echo "$ASK_RESULT" | head -c 200)
   RESULTS_COUNT=$((RESULTS_COUNT + 1))
   if [ "$RAW_JSON" = true ]; then
-    echo "{\"title\":\"NotebookLM Analysis: $QUERY\",\"path\":\"notebooklm://ask\",\"content_preview\":$(printf '%s' "$PREVIEW" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"source_level\":\"C\",\"source_subtype\":\"model_reasoning\",\"metadata\":{\"method\":\"ask\",\"notebook_id\":\"$NOTEBOOK_ID\"}}"
+    echo "{\"title\":$(printf '%s' "NotebookLM Analysis: $QUERY" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"path\":\"notebooklm://ask\",\"content_preview\":$(printf '%s' "$PREVIEW" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"source_level\":\"C\",\"source_subtype\":\"model_reasoning\",\"metadata\":{\"method\":\"ask\",\"notebook_id\":$(printf '%s' "$NOTEBOOK_ID" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))")}}"
     FIRST_RESULT=false
   else
     echo "[notebooklm:model_reasoning] NotebookLM Analysis: $QUERY"
@@ -95,7 +101,7 @@ if [ -n "$NOTEBOOK_ID" ] && command -v notebooklm &>/dev/null; then
     if [ "$RAW_JSON" = true ]; then
       [ "$FIRST_RESULT" = false ] && echo ","
       FIRST_RESULT=false
-      echo "{\"title\":$(printf '%s' "$SRC_TITLE" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"path\":\"notebooklm://source\",\"content_preview\":\"\",\"source_level\":\"B\",\"source_subtype\":\"uploaded_files\",\"metadata\":{\"method\":\"source_list\",\"notebook_id\":\"$NOTEBOOK_ID\"}}"
+      echo "{\"title\":$(printf '%s' "$SRC_TITLE" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))"),\"path\":\"notebooklm://source\",\"content_preview\":\"\",\"source_level\":\"B\",\"source_subtype\":\"uploaded_files\",\"metadata\":{\"method\":\"source_list\",\"notebook_id\":$(printf '%s' "$NOTEBOOK_ID" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))")}}"
     else
       echo "[notebooklm:uploaded_files] $SRC_TITLE"
       echo "  notebooklm://source"
@@ -111,9 +117,7 @@ fi
 
 # If no results at all
 if [ $RESULTS_COUNT -eq 0 ]; then
-  if [ "$RAW_JSON" = true ]; then
-    echo '{"source_type":"notebooklm","query":"","success":true,"results":[]}'
-  else
+  if [ "$RAW_JSON" = false ]; then
     echo "[notebooklm] (no results)"
   fi
   exit 0
