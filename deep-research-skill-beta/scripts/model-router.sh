@@ -8,11 +8,15 @@ CONFIG_ENV="${DEEP_RESEARCH_CONFIG_ENV:-${DEEP_RESEARCH_SKILL_CONFIG_DIR:-$HOME/
 if [ -f "$CONFIG_ENV" ]; then
   # shellcheck disable=SC1090
   source "$CONFIG_ENV"
+elif [ -z "${DEEP_RESEARCH_MODEL_PLANNER_AGENT:-}" ]; then
+  echo "WARNING: config.env not found at $CONFIG_ENV" >&2
+  echo "  Run scripts/setup.sh to configure your models." >&2
+  echo "  Using default Claude models as fallback." >&2
 fi
 
-DEEPSEEK_V4_PRO="opencode-go/deepseek-v4-pro"
-DEEPSEEK_V4_FLASH="opencode-go/deepseek-v4-flash"
-KIMI_26="opencode-go/kimi-k2.6"
+DEEPSEEK_V4_PRO="${DEEP_RESEARCH_OVERRIDE_OPUS:-claude-sonnet-4-6}"
+DEEPSEEK_V4_FLASH="${DEEP_RESEARCH_OVERRIDE_SONNET:-claude-sonnet-4-6}"
+KIMI_26="${DEEP_RESEARCH_OVERRIDE_HAIKU:-claude-haiku-4-5}"
 
 local_override() {
   case "$1" in

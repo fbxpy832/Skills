@@ -39,6 +39,9 @@ prompt_secret() {
   local value
   read -r -s -p "$label (leave blank to skip): " value
   echo >&2
+  if [ -n "$value" ]; then
+    echo "  ✓ 已配置" >&2
+  fi
   echo "$value"
 }
 
@@ -83,35 +86,52 @@ OPENCODE_PROVIDERS=()
 
 # --- 检测 Claude Code ---
 if [ -f "$HOME/.claude/settings.json" ]; then
-  CLAUDE_ENV_OPUS=$(python3 -c "import json; s=json.load(open('$HOME/.claude/settings.json')); e=s.get('env',{}); print(e.get('ANTHROPIC_DEFAULT_OPUS_MODEL',''))" 2>/dev/null || echo "")
-  CLAUDE_ENV_SONNET=$(python3 -c "import json; s=json.load(open('$HOME/.claude/settings.json')); e=s.get('env',{}); print(e.get('ANTHROPIC_DEFAULT_SONNET_MODEL',''))" 2>/dev/null || echo "")
-  CLAUDE_ENV_HAIKU=$(python3 -c "import json; s=json.load(open('$HOME/.claude/settings.json')); e=s.get('env',{}); print(e.get('ANTHROPIC_DEFAULT_HAIKU_MODEL',''))" 2>/dev/null || echo "")
+  echo "[检测] ✅ Claude Code 配置已发现"
+  HOST_TYPE="claude-code"
+  HOST_NAME="Claude Code"
 
-  if [ -n "$CLAUDE_ENV_OPUS" ] || [ -n "$CLAUDE_ENV_SONNET" ] || [ -n "$CLAUDE_ENV_HAIKU" ]; then
-    echo "[检测] ✅ Claude Code 配置已发现"
-    HOST_TYPE="claude-code"
-    HOST_NAME="Claude Code"
+  # 读取模型信息：env 自定义变量 > modelOverrides > 标准模型名
+  CC_SETTINGS="$HOME/.claude/settings.json"
+  eval "$(python3 -c "
+import json, re, sys
 
-    # 读取各 tier 模型描述
-    OPUS_NAME=$(python3 -c "import json; s=json.load(open('$HOME/.claude/settings.json')); e=s.get('env',{}); print(e.get('ANTHROPIC_DEFAULT_OPUS_MODEL_NAME',''))" 2>/dev/null || echo "")
-    SONNET_NAME=$(python3 -c "import json; s=json.load(open('$HOME/.claude/settings.json')); e=s.get('env',{}); print(e.get('ANTHROPIC_DEFAULT_SONNET_MODEL_NAME',''))" 2>/dev/null || echo "")
-    HAIKU_NAME=$(python3 -c "import json; s=json.load(open('$HOME/.claude/settings.json')); e=s.get('env',{}); print(e.get('ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME',''))" 2>/dev/null || echo "")
+s = json.load(open(sys.argv[1]))
+e = s.get('env', {})
+o = s.get('modelOverrides', {})
 
-    # 提取纯模型 ID（去掉 [1M] 等后缀）
-    OPUS_MODEL_ID="${CLAUDE_ENV_OPUS%%[[]*}"
-    SONNET_MODEL_ID="${CLAUDE_ENV_SONNET%%[[]*}"
-    HAIKU_MODEL_ID="${CLAUDE_ENV_HAIKU%%[[]*}"
+opus_raw = e.get('ANTHROPIC_DEFAULT_OPUS_MODEL', o.get('claude-opus-4-6', 'claude-opus-4-6'))
+sonnet_raw = e.get('ANTHROPIC_DEFAULT_SONNET_MODEL', o.get('claude-sonnet-4-6', 'claude-sonnet-4-6'))
+haiku_raw = e.get('ANTHROPIC_DEFAULT_HAIKU_MODEL', o.get('claude-haiku-4-5', 'claude-haiku-4-5'))
 
-    [ -z "$OPUS_MODEL_ID" ] && OPUS_MODEL_ID="claude-opus-4-6"
-    [ -z "$SONNET_MODEL_ID" ] && SONNET_MODEL_ID="claude-sonnet-4-6"
-    [ -z "$HAIKU_MODEL_ID" ] && HAIKU_MODEL_ID="claude-haiku-4-5"
+opus_id = re.sub(r'\s*\[.*?\]', '', opus_raw).strip()
+sonnet_id = re.sub(r'\s*\[.*?\]', '', sonnet_raw).strip()
+haiku_id = re.sub(r'\s*\[.*?\]', '', haiku_raw).strip()
 
-    echo "  模型 Tier 映射:"
-    echo "    opus  (Pro/推理)     → ${OPUS_NAME:-$OPUS_MODEL_ID} ($OPUS_MODEL_ID)"
-    echo "    sonnet (Flash/初稿)  → ${SONNET_NAME:-$SONNET_MODEL_ID} ($SONNET_MODEL_ID)"
-    echo "    haiku (长文本/轻量)  → ${HAIKU_NAME:-$HAIKU_MODEL_ID} ($HAIKU_MODEL_ID)"
-    echo ""
-  fi
+oname = e.get('ANTHROPIC_DEFAULT_OPUS_MODEL_NAME', opus_id)
+sname = e.get('ANTHROPIC_DEFAULT_SONNET_MODEL_NAME', sonnet_id)
+hname = e.get('ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME', haiku_id)
+
+print(f'OPUS_MODEL_ID={opus_id}')
+print(f'SONNET_MODEL_ID={sonnet_id}')
+print(f'HAIKU_MODEL_ID={haiku_id}')
+print(f'OPUS_NAME={oname}')
+print(f'SONNET_NAME={sname}')
+print(f'HAIKU_NAME={hname}')
+" "$CC_SETTINGS" 2>/dev/null)"
+
+  # 确保空值时补默认值
+  [ -z "$OPUS_MODEL_ID" ] && OPUS_MODEL_ID="claude-opus-4-6"
+  [ -z "$SONNET_MODEL_ID" ] && SONNET_MODEL_ID="claude-sonnet-4-6"
+  [ -z "$HAIKU_MODEL_ID" ] && HAIKU_MODEL_ID="claude-haiku-4-5"
+  [ -z "$OPUS_NAME" ] && OPUS_NAME="$OPUS_MODEL_ID"
+  [ -z "$SONNET_NAME" ] && SONNET_NAME="$SONNET_MODEL_ID"
+  [ -z "$HAIKU_NAME" ] && HAIKU_NAME="$HAIKU_MODEL_ID"
+
+  echo "  模型 Tier 映射:"
+  echo "    opus  (Pro/推理)     → $OPUS_NAME ($OPUS_MODEL_ID)"
+  echo "    sonnet (Flash/初稿)  → $SONNET_NAME ($SONNET_MODEL_ID)"
+  echo "    haiku (长文本/轻量)  → $HAIKU_NAME ($HAIKU_MODEL_ID)"
+  echo ""
 fi
 
 # --- 检测 OpenCode ---

@@ -166,7 +166,8 @@ detect_language() {
 cache_key() {
   local backend="$1"
   local query="$2"
-  echo "${backend}:$(echo "$query" | md5 | head -c 16)"
+  local extra="$3"  # e.g. ":parallel" or ":json"
+  echo "${backend}:$(echo "$query" | md5 | head -c 16):c${COUNT}:f${FRESHNESS:0:2}:l${LANG}${extra}"
 }
 
 cache_get() {
@@ -363,8 +364,8 @@ import json, sys
 data = json.load(sys.stdin)
 results = data.get('web', {}).get('results', [])
 if not results:
-    print('(no results)')
-    sys.exit(0)
+    print('search_status=no_results')
+    sys.exit(1)
 for r in results:
     lang = r.get('language', '?')
     title = r.get('title', '')
@@ -377,7 +378,7 @@ for r in results:
     if ex:
         print(f'  [+] {ex[0][:200]}')
     print()
-"
+" 2>/dev/null
 }
 
 format_exa_results() {
@@ -386,8 +387,8 @@ import json, sys
 data = json.load(sys.stdin)
 results = data.get('results', [])
 if not results:
-    print('(no results)')
-    sys.exit(0)
+    print('search_status=no_results')
+    sys.exit(1)
 search_type = data.get('requestId', '')[:8] if data.get('requestId') else ''
 cost = data.get('costDollars', {}).get('total', 0)
 for r in results:
@@ -420,8 +421,8 @@ if code != 200:
     sys.exit(1)
 pages = data.get('data', {}).get('webPages', {}).get('value', [])
 if not pages:
-    print('(no results)')
-    sys.exit(0)
+    print('search_status=no_results')
+    sys.exit(1)
 for p in pages:
     title = p.get('title', '')
     url = p.get('url', '')
@@ -476,6 +477,22 @@ resolve_backend() {
 
 # ─── 主流程 ──────────────────────────────────────────────────────
 
+# API Key 可用性检查（跳过 help / dry-run / 单个后端检查）
+api_key_check_ok() {
+  [ "$DRY_RUN" = true ] && return 0
+  [ -n "${BRAVE_API_KEY:-}" ] && return 0
+  [ -n "${BOCHA_API_KEY:-}" ] && return 0
+  [ -n "${EXA_API_KEY:-}" ] && return 0
+  return 1
+}
+
+if ! api_key_check_ok; then
+  echo "ERROR: 至少需要配置一个搜索 API Key 才能联网搜索。" >&2
+  echo "  请运行 scripts/setup.sh 配置 Bocha / Brave / Exa API Key。" >&2
+  echo "  或在环境变量中设置 BRAVE_API_KEY / BOCHA_API_KEY / EXA_API_KEY。" >&2
+  exit 1
+fi
+
 main() {
   local detected_lang
   if [ "$LANG" = "auto" ]; then
@@ -487,8 +504,20 @@ main() {
   local backend
   backend=$(resolve_backend "$detected_lang" "$BACKEND")
 
+  if [ "$DRY_RUN" = true ]; then
+    echo "DRY RUN: backend=$backend lang=$detected_lang query=\"$QUERY\" count=$COUNT freshness=$FRESHNESS parallel=$PARALLEL"
+    return 0
+  fi
+
+  # ─── Parallel mode ──────────────────────────────────────────────────
+  if [ "$PARALLEL" = true ] && [ "$BACKEND" = "auto" ]; then
+    search_parallel "$detected_lang"
+    return $?
+  fi
+
+  # ─── Single-backend mode ────────────────────────────────────────────
   local ckey
-  ckey=$(cache_key "$backend" "$QUERY")
+  ckey=$(cache_key "$backend" "$QUERY" "")
   if [ "$NO_CACHE" != true ]; then
     local cached
     if cached=$(cache_get "$ckey"); then
@@ -496,16 +525,6 @@ main() {
       echo "$cached"
       return 0
     fi
-  fi
-
-  if [ "$DRY_RUN" = true ]; then
-    echo "DRY RUN: backend=$backend lang=$detected_lang query=\"$QUERY\" count=$COUNT freshness=$FRESHNESS parallel=$PARALLEL"
-    return 0
-  fi
-
-  if [ "$PARALLEL" = true ] && [ "$BACKEND" = "auto" ]; then
-    search_parallel "$detected_lang"
-    return $?
   fi
 
   search_sequential "$backend" "$detected_lang"
@@ -526,71 +545,219 @@ search_parallel() {
   local tmp1 tmp2 pid1 pid2 r1 r2
   tmp1=$(mktemp /tmp/search_parallel_XXXXXX)
   tmp2=$(mktemp /tmp/search_parallel_XXXXXX)
+  local raw1 raw2
+  raw1=$(mktemp /tmp/search_parallel_raw_XXXXXX)
+  raw2=$(mktemp /tmp/search_parallel_raw_XXXXXX)
 
   echo "[PARALLEL] $primary + $secondary: $QUERY" >&2
 
-  ( search_with_fallback "$primary" "$detected_lang" > "$tmp1" 2>/dev/null; echo $? > "${tmp1}.exit" ) &
+  # Run both backends concurrently; capture exit code, raw output, formatted output
+  (
+    local p_result=""
+    local p_ckey
+    p_ckey=$(cache_key "$primary" "$QUERY" ":parallel")
+    # Check cache first
+    if [ "$NO_CACHE" != true ]; then
+      p_result=$(cache_get "$p_ckey") || true
+    fi
+    if [ -n "$p_result" ]; then
+      echo "[CACHE HIT] $primary: $QUERY" >&2
+      echo "$p_result" > "$raw1"
+      echo "$p_result" | format_bocha_results > "$tmp1" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp1}.exit"
+      echo "0" > "${tmp1}.status"
+    else
+      search_bocha "$QUERY" "$COUNT" > "$raw1" 2>/dev/null; r1=$?
+      echo "$r1" > "${tmp1}.status"
+      if [ "$r1" = "0" ]; then
+        cache_set "$p_ckey" "$(cat "$raw1")"
+        # Try to format, capture exit code
+        cat "$raw1" | format_bocha_results > "$tmp1" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp1}.exit"
+      fi
+    fi
+  ) &
   pid1=$!
-  ( search_with_fallback "$secondary" "$detected_lang" > "$tmp2" 2>/dev/null; echo $? > "${tmp2}.exit" ) &
+
+  (
+    local s_result=""
+    local s_ckey
+    s_ckey=$(cache_key "$secondary" "$QUERY" ":parallel")
+    if [ "$NO_CACHE" != true ]; then
+      s_result=$(cache_get "$s_ckey") || true
+    fi
+    if [ -n "$s_result" ]; then
+      echo "[CACHE HIT] $secondary: $QUERY" >&2
+      echo "$s_result" > "$raw2"
+      echo "$s_result" | format_brave_results > "$tmp2" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp2}.exit"
+      echo "0" > "${tmp2}.status"
+    else
+      search_brave "$QUERY" "$COUNT" > "$raw2" 2>/dev/null; r2=$?
+      echo "$r2" > "${tmp2}.status"
+      if [ "$r2" = "0" ]; then
+        cache_set "$s_ckey" "$(cat "$raw2")"
+        # Count Brave success
+        counter_inc
+        local count_after
+        count_after=$(cat "$COUNT_FILE" 2>/dev/null || echo "0")
+        echo "[COUNT] Brave count: $count_after" >&2
+        cat "$raw2" | format_brave_results > "$tmp2" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp2}.exit"
+      fi
+    fi
+  ) &
   pid2=$!
 
   wait $pid1 $pid2 2>/dev/null || true
 
   local e1=1 e2=1
-  [ -f "${tmp1}.exit" ] && e1=$(cat "${tmp1}.exit")
-  [ -f "${tmp2}.exit" ] && e2=$(cat "${tmp2}.exit")
+  local s1=1 s2=1
+  local fmt_exit1=1 fmt_exit2=1
+  [ -f "${tmp1}.exit" ] && fmt_exit1=$(cat "${tmp1}.exit")
+  [ -f "${tmp2}.exit" ] && fmt_exit2=$(cat "${tmp2}.exit")
+  [ -f "${tmp1}.status" ] && s1=$(cat "${tmp1}.status")
+  [ -f "${tmp2}.status" ] && s2=$(cat "${tmp2}.status")
 
-  echo "[PARALLEL] $primary exit=$e1, $secondary exit=$e2" >&2
+  # Determine per-backend status
+  # sN=0 means API call succeeded; fmt_exit=0 means results were non-empty
+  local p_status="failed" s_status="failed"
+  local p_count=0 s_count=0
+  local p_error="" s_error=""
 
-  if [ "$e1" = "0" ] && [ "$e2" = "0" ]; then
-    merge_results "$tmp1" "$tmp2" "$primary" "$secondary"
-  elif [ "$e1" = "0" ]; then
-    cat "$tmp1"
-  elif [ "$e2" = "0" ]; then
-    cat "$tmp2"
+  if [ "$s1" = "0" ]; then
+    if [ "$fmt_exit1" = "0" ]; then
+      p_status="success"
+      p_count=$(grep -c "^\[" "$tmp1" 2>/dev/null || echo "0")
+    else
+      p_status="no_results"
+      p_error="API returned success but no results"
+    fi
   else
-    echo "ERROR: Both engines failed." >&2
-    rm -f "$tmp1" "$tmp2" "${tmp1}.exit" "${tmp2}.exit"
-    return 1
+    p_status="failed"
+    p_error="API call failed"
   fi
 
-  rm -f "$tmp1" "$tmp2" "${tmp1}.exit" "${tmp2}.exit"
+  if [ "$s2" = "0" ]; then
+    if [ "$fmt_exit2" = "0" ]; then
+      s_status="success"
+      s_count=$(grep -c "^\[" "$tmp2" 2>/dev/null || echo "0")
+    else
+      s_status="no_results"
+      s_error="API returned success but no results"
+    fi
+  else
+    s_status="failed"
+    s_error="API call failed"
+  fi
+
+  echo "[PARALLEL] $primary: $p_status, $secondary: $s_status" >&2
+
+  # Determine overall status
+  local overall_status
+  if [ "$p_status" = "success" ] && [ "$s_status" = "success" ]; then
+    overall_status="success"
+    e1=0
+  elif [ "$p_status" = "success" ] || [ "$s_status" = "success" ]; then
+    overall_status="partial_success"
+    e1=0
+  elif [ "$p_status" = "no_results" ] || [ "$s_status" = "no_results" ]; then
+    overall_status="no_results"
+    e1=1
+  else
+    overall_status="failed"
+    e1=1
+  fi
+
+  # Output failure info to stderr
+  if [ "$e1" != "0" ]; then
+    echo "SEARCH_STATUS: $overall_status" >&2
+    echo "FAILURE_TYPE: web_search_failed" >&2
+    echo "ATTEMPTED_BACKENDS: $primary:$p_status,$secondary:$s_status" >&2
+  fi
+
+  # Output results
+  if [ "$RAW_JSON" = true ]; then
+    # Structured JSON output
+    local merged_text=""
+    merged_text=$(merge_results "$tmp1" "$tmp2" "$primary" "$secondary" 2>/dev/null || true)
+
+    python3 -c "
+import json, sys
+output = {
+    'query': '$(echo "$QUERY" | sed "s/['\\\"]//g")',
+    'lang': '$detected_lang',
+    'mode': 'parallel',
+    'overall_status': '$overall_status',
+    'backends': [
+        {'name': '$primary', 'status': '$p_status', 'result_count': $p_count, 'error': '$(echo "$p_error" | sed "s/['\\\"]//g")'},
+        {'name': '$secondary', 'status': '$s_status', 'result_count': $s_count, 'error': '$(echo "$s_error" | sed "s/['\\\"]//g")'}
+    ],
+    'results': '''$(printf '%s' "$merged_text" | sed "s/['\\\"]//g")''',
+    'errors': []
+}
+json.dump(output, sys.stdout, ensure_ascii=False, indent=2)
+print()
+"
+  else
+    merge_results "$tmp1" "$tmp2" "$primary" "$secondary"
+  fi
+
+  rm -f "$tmp1" "$tmp2" "${tmp1}.exit" "${tmp2}.exit" "$raw1" "$raw2"
+
+  return $e1
 }
 
 search_with_fallback() {
   local backend="$1"
   local detected_lang="$2"
   local result
+  local last_error=""
 
   if [ "$backend" = "bocha" ]; then
     if result=$(retry "$MAX_RETRIES" search_bocha "$QUERY" "$COUNT"); then
-      echo "$result" | format_bocha_results
+      echo "$result" | format_bocha_results && return 0
+      # No results — fall through to Brave
+      echo "WARNING: Bocha returned no results, trying Brave..." >&2
+      last_error="bocha:no_results"
     else
       echo "WARNING: Bocha failed, trying Brave..." >&2
-      if result=$(retry "$MAX_RETRIES" search_brave "$QUERY" "$COUNT" "zh"); then
-        echo "$result" | format_brave_results
-      else
-        return 1
-      fi
+      last_error="bocha:api_failed"
+    fi
+    if result=$(retry "$MAX_RETRIES" search_brave "$QUERY" "$COUNT" "zh"); then
+      echo "$result" | format_brave_results && return 0
+      echo "WARNING: Brave also returned no results after Bocha failure." >&2
+      last_error="${last_error}:brave:no_results"
+    else
+      last_error="${last_error}:brave:api_failed"
     fi
   elif [ "$backend" = "exa" ]; then
     if result=$(retry "$MAX_RETRIES" search_exa "$QUERY" "$COUNT"); then
-      echo "$result" | format_exa_results
+      echo "$result" | format_exa_results && return 0
+      echo "WARNING: Exa returned no results, trying Brave..." >&2
+      last_error="exa:no_results"
     else
       echo "WARNING: Exa failed, trying Brave..." >&2
-      if result=$(retry "$MAX_RETRIES" search_brave "$QUERY" "$COUNT"); then
-        echo "$result" | format_brave_results
-      else
-        return 1
-      fi
+      last_error="exa:api_failed"
+    fi
+    if result=$(retry "$MAX_RETRIES" search_brave "$QUERY" "$COUNT"); then
+      echo "$result" | format_brave_results && return 0
+      echo "WARNING: Brave also returned no results after Exa failure." >&2
+      last_error="${last_error}:brave:no_results"
+    else
+      last_error="${last_error}:brave:api_failed"
     fi
   else
     if result=$(retry "$MAX_RETRIES" search_brave "$QUERY" "$COUNT"); then
-      echo "$result" | format_brave_results
+      echo "$result" | format_brave_results && return 0
+      echo "WARNING: Brave returned no results." >&2
+      last_error="brave:no_results"
     else
-      return 1
+      last_error="brave:api_failed"
     fi
   fi
+
+  # All backends exhausted with no usable results
+  echo "SEARCH_STATUS: no_results" >&2
+  echo "FAILURE_TYPE: web_search_failed" >&2
+  echo "ATTEMPTED_BACKENDS: $last_error" >&2
+  return 1
 }
 
 merge_results() {
@@ -621,65 +788,107 @@ search_sequential() {
     search_lang="zh"
   fi
 
+  # Try primary backend
+  local search_ok=false
+  local final_backend="$backend"
+
   if [ "$backend" = "bocha" ]; then
-    if ! result=$(retry "$MAX_RETRIES" search_bocha "$QUERY" "$COUNT"); then
-      echo "ERROR: Bocha search failed after $MAX_RETRIES attempts." >&2
-      echo "Falling back to Brave..." >&2
-      backend="brave"
-      if ! result=$(retry "$MAX_RETRIES" search_brave "$QUERY" "$COUNT" "zh"); then
-        echo "ERROR: Both Bocha and Brave search failed." >&2
-        return 1
+    if result=$(retry "$MAX_RETRIES" search_bocha "$QUERY" "$COUNT"); then
+      if echo "$result" | format_bocha_results > /dev/null 2>&1; then
+        search_ok=true
+      else
+        echo "WARNING: Bocha returned no results, falling back to Brave..." >&2
+        final_backend="brave"
       fi
+    else
+      echo "WARNING: Bocha search failed, falling back to Brave..." >&2
+      final_backend="brave"
     fi
   elif [ "$backend" = "exa" ]; then
-    if ! result=$(retry "$MAX_RETRIES" search_exa "$QUERY" "$COUNT"); then
-      echo "ERROR: Exa search failed after $MAX_RETRIES attempts." >&2
-      echo "Falling back to Brave..." >&2
-      backend="brave"
-      if ! result=$(retry "$MAX_RETRIES" search_brave "$QUERY" "$COUNT"); then
-        echo "ERROR: Both Exa and Brave search failed." >&2
-        return 1
+    if result=$(retry "$MAX_RETRIES" search_exa "$QUERY" "$COUNT"); then
+      if echo "$result" | format_exa_results > /dev/null 2>&1; then
+        search_ok=true
+      else
+        echo "WARNING: Exa returned no results, falling back to Brave..." >&2
+        final_backend="brave"
       fi
+    else
+      echo "WARNING: Exa search failed, falling back to Brave..." >&2
+      final_backend="brave"
     fi
   else
-    if ! result=$(retry "$MAX_RETRIES" search_brave "$QUERY" "$COUNT" "$search_lang"); then
+    if result=$(retry "$MAX_RETRIES" search_brave "$QUERY" "$COUNT" "$search_lang"); then
+      if echo "$result" | format_brave_results > /dev/null 2>&1; then
+        search_ok=true
+      else
+        echo "WARNING: Brave returned no results." >&2
+        # Try fallback backends
+        if [ -n "$BOCHA_API_KEY" ]; then
+          echo "Falling back to Bocha..." >&2
+          if result=$(retry "$MAX_RETRIES" search_bocha "$QUERY" "$COUNT"); then
+            if echo "$result" | format_bocha_results > /dev/null 2>&1; then
+              final_backend="bocha"
+              search_ok=true
+            fi
+          fi
+        fi
+        if [ "$search_ok" != true ] && [ -n "$EXA_API_KEY" ]; then
+          echo "Falling back to Exa..." >&2
+          if result=$(retry "$MAX_RETRIES" search_exa "$QUERY" "$COUNT"); then
+            if echo "$result" | format_exa_results > /dev/null 2>&1; then
+              final_backend="exa"
+              search_ok=true
+            fi
+          fi
+        fi
+      fi
+    else
       echo "ERROR: Brave search failed after $MAX_RETRIES attempts." >&2
       if [ -n "$BOCHA_API_KEY" ]; then
         echo "Falling back to Bocha..." >&2
-        backend="bocha"
-        if ! result=$(retry "$MAX_RETRIES" search_bocha "$QUERY" "$COUNT"); then
-          echo "ERROR: Both Brave and Bocha search failed." >&2
-          return 1
+        if result=$(retry "$MAX_RETRIES" search_bocha "$QUERY" "$COUNT"); then
+          final_backend="bocha"
+          search_ok=true
         fi
-      elif [ -n "$EXA_API_KEY" ]; then
+      fi
+      if [ "$search_ok" != true ] && [ -n "$EXA_API_KEY" ]; then
         echo "Falling back to Exa..." >&2
-        backend="exa"
-        if ! result=$(retry "$MAX_RETRIES" search_exa "$QUERY" "$COUNT"); then
-          echo "ERROR: Both Brave and Exa search failed." >&2
-          return 1
+        if result=$(retry "$MAX_RETRIES" search_exa "$QUERY" "$COUNT"); then
+          final_backend="exa"
+          search_ok=true
         fi
-      else
-        return 1
       fi
     fi
   fi
 
-  if [ "$backend" = "brave" ]; then
+  if [ "$search_ok" != true ]; then
+    echo "SEARCH_STATUS: no_results" >&2
+    echo "FAILURE_TYPE: web_search_failed" >&2
+    echo "ATTEMPTED_BACKENDS: $backend,$final_backend" >&2
+    return 1
+  fi
+
+  # Count Brave success
+  if [ "$final_backend" = "brave" ]; then
     counter_inc
     local count_after
     count_after=$(cat "$COUNT_FILE" 2>/dev/null || echo "0")
     echo "[COUNT] ${count_before} → ${count_after}" >&2
   fi
 
+  # Cache the raw result
+  local ckey_actual
+  ckey_actual=$(cache_key "$final_backend" "$QUERY" "")
   if [ "$NO_CACHE" != true ] && [ -n "$result" ]; then
-    cache_set "$ckey" "$result"
+    cache_set "$ckey_actual" "$result"
   fi
 
+  # Output
   if [ "$RAW_JSON" = true ]; then
     echo "$result"
-  elif [ "$backend" = "bocha" ]; then
+  elif [ "$final_backend" = "bocha" ]; then
     echo "$result" | format_bocha_results
-  elif [ "$backend" = "exa" ]; then
+  elif [ "$final_backend" = "exa" ]; then
     echo "$result" | format_exa_results
   else
     echo "$result" | format_brave_results

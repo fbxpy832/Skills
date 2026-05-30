@@ -1,3 +1,12 @@
+# ============================================================================
+# 模型路由参考文档
+# ============================================================================
+# 注意：本文件是模型路由策略的参考文档，实际路由逻辑在 scripts/model-router.sh
+# 中实现。修改模型分配时请同时更新 model-router.sh 和本文件以保持同步。
+# 用户级配置通过 scripts/setup.sh 写入 ~/.config/deep-research-skill/config.env，
+# 运行时 model-router.sh 优先读取 config.env，未配置时使用内置默认值。
+# ============================================================================
+
 available_models:
   # Defaults are intentionally provider-neutral enough to run in an OpenCode
   # token-plan environment. For company rollout, run scripts/setup.sh and let

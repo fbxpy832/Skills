@@ -7,6 +7,34 @@ description: 深度研究决策工作流。用于企业经营决策、技术路�
 
 深度研究工作流，支持 7 Agent 流水线、5 级来源体系（S/A/B/C/D）、多搜索引擎路由、质量审计和反幻觉机制。
 
+## 安装方式
+
+### 方式一：Claude Code 本地技能
+
+```bash
+# 1. 将本 skill 复制到 Claude Code skills 目录
+mkdir -p ~/.claude/skills/deep-research
+cp -r * ~/.claude/skills/deep-research/
+
+# 2. 运行配置脚本（首次使用必须运行）
+cd ~/.claude/skills/deep-research && bash scripts/setup.sh
+```
+
+### 方式二：放在项目中直接使用
+
+```bash
+git clone <仓库地址>
+cd deep-research-skill-beta
+bash scripts/setup.sh
+```
+
+### 方式三：OpenCode 集成
+
+```bash
+bash scripts/install-opencode-providers.sh
+bash scripts/setup.sh
+```
+
 ## 前置条件
 
 首次使用需要运行配置脚本：
