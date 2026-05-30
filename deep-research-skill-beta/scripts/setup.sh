@@ -437,13 +437,51 @@ echo "知识库路径配置"
 echo "=========================================="
 echo ""
 
-# Obsidian Vault: auto-detect from obsidian-article-extractor config, then common path
+# System dependency checks for knowledge adapters
+echo "[依赖检查] 知识库搜索所需工具:"
+if command -v rg &>/dev/null; then
+  echo "  ✅ rg (ripgrep) — 已安装，用于 Obsidian Vault 全文搜索"
+else
+  echo "  ⚠️ rg (ripgrep) 未安装，Obsidian Vault 搜索将不可用。安装: brew install ripgrep"
+fi
+if command -v lark-cli &>/dev/null; then
+  echo "  ✅ lark-cli — 已安装，飞书知识库搜索可用"
+else
+  echo "  ⚪ lark-cli 未安装，飞书知识库搜索不可用。安装: pip install lark-cli"
+fi
+if command -v notebooklm &>/dev/null; then
+  echo "  ✅ notebooklm CLI — 已安装，NotebookLM 搜索可用"
+else
+  echo "  ⚪ notebooklm CLI 未安装，NotebookLM 搜索不可用"
+fi
+echo ""
+
+# Obsidian Vault: auto-detect from obsidian-article-extractor config, then iCloud sync path
 DETECTED_VAULT=""
 if [ -f "$HOME/.config/obsidian-article-extractor/vault-path" ]; then
   DETECTED_VAULT=$(cat "$HOME/.config/obsidian-article-extractor/vault-path" 2>/dev/null || echo "")
 fi
-if [ -z "$DETECTED_VAULT" ] && [ -d "$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub" ]; then
-  DETECTED_VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub"
+if [ -z "$DETECTED_VAULT" ]; then
+  # Detect any Obsidian vault synced via iCloud (works for all vault names)
+  ICLOUD_OBSIDIAN="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents"
+  if [ -d "$ICLOUD_OBSIDIAN" ]; then
+    # Find the first subdirectory that looks like a vault (has .obsidian/)
+    for maybe_vault in "$ICLOUD_OBSIDIAN"/*/; do
+      if [ -d "${maybe_vault}.obsidian" ]; then
+        DETECTED_VAULT="${maybe_vault%/}"
+        break
+      fi
+    done
+    # Fallback: just use the iCloud Obsidian folder
+    if [ -z "$DETECTED_VAULT" ]; then
+      for d in "$ICLOUD_OBSIDIAN"/*/; do
+        if [ -d "$d" ]; then
+          DETECTED_VAULT="${d%/}"
+          break
+        fi
+      done
+    fi
+  fi
 fi
 echo "  Obsidian Vault 路径用于搜索本地 Markdown 笔记和技术 Wiki。"
 obsidian_vault="$(prompt_val "Obsidian Vault 路径" "${DETECTED_VAULT:-}")"
@@ -476,6 +514,13 @@ echo "说明：至少配置一个搜索 API Key 才能进行联网搜索。"
 echo "  博查 (Bocha) — 中文搜索，国内直连，推荐"
 echo "  Brave — 中英文通用，需代理"
 echo "  Exa — 英文语义搜索，直连"
+echo ""
+
+# Search tool availability check
+echo "[依赖检查] 搜索所需工具:"
+if command -v curl &>/dev/null; then echo "  ✅ curl — 已安装"; else echo "  ❌ curl 未安装，搜索 API 无法调用"; fi
+if command -v python3 &>/dev/null; then echo "  ✅ python3 — 已安装"; else echo "  ❌ python3 未安装，搜索结果解析不可用"; fi
+if command -v md5 &>/dev/null; then echo "  ✅ md5 — 已安装"; else echo "  ⚪ md5 未安装，缓存 key 生成降级"; fi
 echo ""
 
 brave_key="$(prompt_secret "BRAVE_API_KEY")"
@@ -579,7 +624,12 @@ echo ""
 echo "配置文件: $CONFIG_ENV"
 echo ""
 echo "下一步："
-echo "  确保 search API key 对应的环境变量已 export 到当前 shell"
-echo "  或 source 配置文件:"
+echo "  在当前 shell 会话中激活配置（每次打开新终端都需要执行）："
 echo "    source $CONFIG_ENV"
+echo ""
+echo "  或永久加载（根据你的 shell 类型）："
+echo "  bash/zsh:  echo 'source $CONFIG_ENV' >> ~/.zshrc"
+echo ""
+echo "  确保已配置的搜索 API Key (BRAVE_API_KEY / BOCHA_API_KEY / EXA_API_KEY)"
+echo "  可通过 source 配置文件或直接 export 到环境变量。"
 echo ""

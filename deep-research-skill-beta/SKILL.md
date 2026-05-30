@@ -12,12 +12,18 @@ description: 深度研究决策工作流。用于企业经营决策、技术路�
 ### 方式一：Claude Code 本地技能
 
 ```bash
-# 1. 将本 skill 复制到 Claude Code skills 目录
+# 1. 将本 skill 复制到 Claude Code skills 目录（排除 git/ 等无关文件）
 mkdir -p ~/.claude/skills/deep-research
-cp -r * ~/.claude/skills/deep-research/
+cp scripts/ references/ templates/ source-policy.yaml model-routing.yaml SKILL.md ~/.claude/skills/deep-research/
+cp -r scripts/ references/ templates/ ~/.claude/skills/deep-research/
+# 注意：如果以上命令报错，请逐个目录复制：
+# cp -r scripts references templates source-policy.yaml model-routing.yaml SKILL.md ~/.claude/skills/deep-research/
 
 # 2. 运行配置脚本（首次使用必须运行）
 cd ~/.claude/skills/deep-research && bash scripts/setup.sh
+
+# 3. 激活配置
+source ~/.config/deep-research-skill/config.env
 ```
 
 ### 方式二：放在项目中直接使用
@@ -26,6 +32,7 @@ cd ~/.claude/skills/deep-research && bash scripts/setup.sh
 git clone <仓库地址>
 cd deep-research-skill-beta
 bash scripts/setup.sh
+source ~/.config/deep-research-skill/config.env
 ```
 
 ### 方式三：OpenCode 集成
@@ -33,17 +40,19 @@ bash scripts/setup.sh
 ```bash
 bash scripts/install-opencode-providers.sh
 bash scripts/setup.sh
+source ~/.config/deep-research-skill/config.env
 ```
 
 ## 前置条件
 
-首次使用需要运行配置脚本：
-
-```bash
-scripts/setup.sh
-```
-
-配置项包括：各 agent 模型来源、搜索 API key（Brave/Bocha/Exa）、知识库路径（Obsidian Vault / NotebookLM）、输出目录。
+- **bash 3.2+**（macOS 自带，Linux 需确认）
+- **python3**（用于 JSON 处理和搜索结果解析）
+- **curl**（用于搜索 API 调用）
+- 至少一个搜索 API Key（通过 setup.sh 配置）：Brave / Bocha / Exa
+- 可选工具：
+  - **ripgrep** (`brew install ripgrep`) — 用于 Obsidian Vault 全文搜索
+  - **lark-cli** — 用于飞书知识库搜索
+  - **notebooklm CLI** — 用于 NotebookLM 搜索
 
 ## 使用方式
 
@@ -53,15 +62,9 @@ scripts/setup.sh
 - **OpenCode**：`/opencode-deep-research 研究主题描述`
 - **通用模式**：`scripts/generic-research-runner.sh high_quality task.md`（宿主无关）
 
-## 首次配置
-
-```bash
-scripts/setup.sh
-```
-
 配置项包括：各 agent 模型来源、搜索 API key（Brave/Bocha/Exa）、知识库路径（Obsidian Vault / NotebookLM）、输出目录。
-
 安装后还需将 `scripts/` 目录添加到 $PATH 或使用绝对路径调用 search.sh、model-router.sh 等脚本。
+激活配置：`source ~/.config/deep-research-skill/config.env`
 
 ## 技能结构
 
