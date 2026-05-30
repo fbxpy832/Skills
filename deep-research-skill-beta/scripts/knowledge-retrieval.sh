@@ -194,12 +194,16 @@ fi
 
 echo "KNOWLEDGE_SEARCH_STATUS: $local_knowledge_status" >&2
 echo "SOURCE_STATUS: ${SOURCE_STATUS:-}" >&2
-echo "FAILURE_TYPE: local_source_unavailable" >&2
-echo "FAILED_SOURCE_TYPE: local_vault" >&2
-echo "FAILED_SOURCE_DETAIL: $FAILED_ADAPTERS adapter(s) failed, $EMPTY_ADAPTERS returned no results out of $TOTAL_ADAPTERS total" >&2
-echo "ATTEMPTED_BACKENDS: lark,obsidian,notebooklm" >&2
-echo "FALLBACK_PATH: none (knowledge adapters)" >&2
-echo "SUGGESTED_NEXT_QUERIES: Configure knowledge adapters via setup.sh or use --allow-empty to skip" >&2
+
+# Only output failure metadata when status is not clean success
+if [ "$local_knowledge_status" != "success" ]; then
+  echo "FAILURE_TYPE: local_source_unavailable" >&2
+  echo "FAILED_SOURCE_TYPE: local_vault" >&2
+  echo "FAILED_SOURCE_DETAIL: $FAILED_ADAPTERS adapter(s) failed, $EMPTY_ADAPTERS returned no results out of $TOTAL_ADAPTERS total" >&2
+  echo "ATTEMPTED_BACKENDS: lark,obsidian,notebooklm" >&2
+  echo "FALLBACK_PATH: none (knowledge adapters)" >&2
+  echo "SUGGESTED_NEXT_QUERIES: Configure knowledge adapters via setup.sh or use --allow-empty to skip" >&2
+fi
 
 if [ "$local_knowledge_status" = "failed" ] || [ "$local_knowledge_status" = "no_results" ]; then
   exit 1

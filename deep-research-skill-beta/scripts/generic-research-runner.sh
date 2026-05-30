@@ -677,8 +677,10 @@ finalize_report() {
   # Check source_failure_log for real entries to decide degradation
   if [ -f "$source_failure_log_file" ]; then
     local failure_count
-    failure_count=$(grep -c "failure_time:" "$source_failure_log_file" 2>/dev/null || echo "0")
-    if [ "$failure_count" -gt 0 ] && [ -z "$deg_tag" ]; then
+    failure_count=$(grep -c "failure_time:" "$source_failure_log_file" 2>/dev/null || true)
+    failure_count="${failure_count:-0}"
+    failure_count=$(echo "$failure_count" | tr -cd '0-9' | head -c 10)
+    if [ "${failure_count:-0}" -gt 0 ] && [ -z "$deg_tag" ]; then
       deg_tag="-待联网核验版"
     fi
   fi
@@ -699,7 +701,13 @@ finalize_report() {
     filename="${base_name}${version_tag}-${date_tag}.md"
   fi
 
-  # Build the final report
+  # Read writer_agent body (skip first H1 line if present, we write our own)
+  local writer_body=""
+  if [ -f "$writer_file" ]; then
+    writer_body=$(awk 'NR==1 && /^# / {next} {print}' "$writer_file" 2>/dev/null || cat "$writer_file")
+  fi
+
+  # Build the final report — write to final_dir, NOT CWD
   {
     echo "# ${topic_clean}：${type_clean}"
     echo ""
@@ -712,6 +720,17 @@ finalize_report() {
       echo "---"
       echo ""
     fi
+    # Include the full writer_agent report body (actual research content)
+    if [ -n "$writer_body" ]; then
+      echo "$writer_body"
+      echo ""
+    else
+      echo "（writer_agent 输出为空，无法生成完整报告）"
+      echo ""
+    fi
+    # Append metadata footer
+    echo "---"
+    echo ""
     echo "## 报告信息"
     echo ""
     echo "- 生成日期: $(date '+%Y-%m-%d')"
@@ -719,19 +738,16 @@ finalize_report() {
     echo "- 搜索状态: ${search_status:-unknown}"
     echo "- 报告可用性: ${report_usability:-正式版}"
     echo "- 来源类型: ${source_types:-未分类}"
-    if [ -f "$source_failure_log_file" ]; then
-      echo "- source_failure_log: $source_failure_log_file"
+    if [ -n "$deg_tag" ]; then
+      echo "- 降级标记: ${deg_tag#-}"
     fi
-    echo "- 来源文件: $writer_file"
-    echo ""
-    echo "---"
-    echo ""
-    echo "> 本文件由 writer_agent 输出生成。完整内容见: $writer_file"
-    echo ""
-    echo "## 数据局限性"
-    echo ""
-    echo "- 本报告的部分数据可能缺少权威来源核验"
-    echo "- 关键决策前请人工核实核心数据"
+    if [ -f "$source_failure_log_file" ]; then
+      local fc
+      fc=$(grep -c "failure_time:" "$source_failure_log_file" 2>/dev/null || true)
+      fc="${fc:-0}"
+      fc=$(echo "$fc" | tr -cd '0-9')
+      echo "- source_failure_log: ${fc} entries"
+    fi
     echo ""
     if [ -n "$deg_tag" ]; then
       echo "## 联网核验恢复清单"
@@ -743,26 +759,10 @@ finalize_report() {
       echo "| 1 | 全部 | 待从 writer_agent 输出中提取 | 高 |"
       echo ""
     fi
-  } > "$filename" 2>/dev/null || {
-    # Fallback: write to output dir
-    filename="$final_dir/$filename"
-    {
-      echo "# ${topic_clean}：${type_clean}"
-      echo ""
-      if [ -n "$deg_tag" ]; then
-        echo "---"
-        echo "⚠️ 本报告为${deg_tag#-} / 待联网核验版"
-        echo "搜索状态: ${search_status:-unknown}"
-        echo "报告可用性: ${report_usability:-内部初稿}"
-        echo "---"
-        echo ""
-      fi
-      echo "完整内容见 writer_agent 输出: $writer_file"
-    } > "$filename"
-  }
+  } > "$final_dir/$filename" 2>/dev/null
 
-  write_event "run" "" "finalized" "" "not_verified" "Final report: $filename" ""
-  echo "Final report: $filename"
+  write_event "run" "" "finalized" "" "not_verified" "Final report: $final_dir/$filename" ""
+  echo "Final report: $final_dir/$filename"
 }
 
 finalize_report

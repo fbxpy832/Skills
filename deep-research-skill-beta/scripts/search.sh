@@ -546,6 +546,19 @@ search_parallel() {
     secondary="brave"
   fi
 
+  # Resolve backend functions dynamically (bash 3.2 compatible)
+  local primary_search primary_format secondary_search secondary_format
+  case "$primary" in
+    bocha) primary_search="search_bocha";  primary_format="format_bocha_results" ;;
+    exa)   primary_search="search_exa";    primary_format="format_exa_results" ;;
+    brave) primary_search="search_brave";  primary_format="format_brave_results" ;;
+  esac
+  case "$secondary" in
+    bocha) secondary_search="search_bocha";  secondary_format="format_bocha_results" ;;
+    exa)   secondary_search="search_exa";    secondary_format="format_exa_results" ;;
+    brave) secondary_search="search_brave";  secondary_format="format_brave_results" ;;
+  esac
+
   local tmp1 tmp2 pid1 pid2 r1 r2
   tmp1=$(mktemp /tmp/search_parallel_XXXXXX)
   tmp2=$(mktemp /tmp/search_parallel_XXXXXX)
@@ -560,22 +573,20 @@ search_parallel() {
     local p_result=""
     local p_ckey
     p_ckey=$(cache_key "$primary" "$QUERY" ":parallel")
-    # Check cache first
     if [ "$NO_CACHE" != true ]; then
       p_result=$(cache_get "$p_ckey") || true
     fi
     if [ -n "$p_result" ]; then
       echo "[CACHE HIT] $primary: $QUERY" >&2
       echo "$p_result" > "$raw1"
-      echo "$p_result" | format_bocha_results > "$tmp1" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp1}.exit"
+      echo "$p_result" | $primary_format > "$tmp1" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp1}.exit"
       echo "0" > "${tmp1}.status"
     else
-      search_bocha "$QUERY" "$COUNT" > "$raw1" 2>/dev/null; r1=$?
+      $primary_search "$QUERY" "$COUNT" > "$raw1" 2>/dev/null; r1=$?
       echo "$r1" > "${tmp1}.status"
       if [ "$r1" = "0" ]; then
         cache_set "$p_ckey" "$(cat "$raw1")"
-        # Try to format, capture exit code
-        cat "$raw1" | format_bocha_results > "$tmp1" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp1}.exit"
+        cat "$raw1" | $primary_format > "$tmp1" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp1}.exit"
       fi
     fi
   ) &
@@ -591,19 +602,21 @@ search_parallel() {
     if [ -n "$s_result" ]; then
       echo "[CACHE HIT] $secondary: $QUERY" >&2
       echo "$s_result" > "$raw2"
-      echo "$s_result" | format_brave_results > "$tmp2" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp2}.exit"
+      echo "$s_result" | $secondary_format > "$tmp2" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp2}.exit"
       echo "0" > "${tmp2}.status"
     else
-      search_brave "$QUERY" "$COUNT" > "$raw2" 2>/dev/null; r2=$?
+      $secondary_search "$QUERY" "$COUNT" > "$raw2" 2>/dev/null; r2=$?
       echo "$r2" > "${tmp2}.status"
       if [ "$r2" = "0" ]; then
         cache_set "$s_ckey" "$(cat "$raw2")"
         # Count Brave success
-        counter_inc
-        local count_after
-        count_after=$(cat "$COUNT_FILE" 2>/dev/null || echo "0")
-        echo "[COUNT] Brave count: $count_after" >&2
-        cat "$raw2" | format_brave_results > "$tmp2" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp2}.exit"
+        if [ "$secondary" = "brave" ] || [ "$primary" = "brave" ]; then
+          counter_inc
+          local count_after
+          count_after=$(cat "$COUNT_FILE" 2>/dev/null || echo "0")
+          echo "[COUNT] Brave count: $count_after" >&2
+        fi
+        cat "$raw2" | $secondary_format > "$tmp2" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp2}.exit"
       fi
     fi
   ) &
@@ -620,7 +633,6 @@ search_parallel() {
   [ -f "${tmp2}.status" ] && s2=$(cat "${tmp2}.status")
 
   # Determine per-backend status
-  # sN=0 means API call succeeded; fmt_exit=0 means results were non-empty
   local p_status="failed" s_status="failed"
   local p_count=0 s_count=0
   local p_error="" s_error=""
@@ -683,27 +695,63 @@ search_parallel() {
 
   # Output results
   if [ "$RAW_JSON" = true ]; then
-    # Structured JSON output
-    local merged_text=""
-    merged_text=$(merge_results "$tmp1" "$tmp2" "$primary" "$secondary" 2>/dev/null || true)
+    # Write merged text to a temp file for safe Python consumption
+    local merged_file
+    merged_file=$(mktemp /tmp/search_parallel_merged_XXXXXX)
+    merge_results "$tmp1" "$tmp2" "$primary" "$secondary" > "$merged_file" 2>/dev/null || true
 
-    python3 -c "
-import json, sys
+    # Use heredoc with quoted delimiter to prevent shell interpolation,
+    # pass dynamic values through env vars and temp files
+    export PARALLEL_QUERY="$QUERY"
+    export PARALLEL_LANG="$detected_lang"
+    export PARALLEL_MODE="parallel"
+    export PARALLEL_OVERALL_STATUS="$overall_status"
+    export PARALLEL_PRIMARY_NAME="$primary"
+    export PARALLEL_PRIMARY_STATUS="$p_status"
+    export PARALLEL_PRIMARY_COUNT="$p_count"
+    export PARALLEL_PRIMARY_ERROR="$p_error"
+    export PARALLEL_SECONDARY_NAME="$secondary"
+    export PARALLEL_SECONDARY_STATUS="$s_status"
+    export PARALLEL_SECONDARY_COUNT="$s_count"
+    export PARALLEL_SECONDARY_ERROR="$s_error"
+    export PARALLEL_MERGED_FILE="$merged_file"
+
+    python3 << 'PYEOF'
+import json, sys, os
+
+merged_file = os.environ.get('PARALLEL_MERGED_FILE', '')
+merged_text = ''
+if merged_file and os.path.isfile(merged_file):
+    with open(merged_file) as f:
+        merged_text = f.read()
+
 output = {
-    'query': '$(echo "$QUERY" | sed "s/['\\\"]//g")',
-    'lang': '$detected_lang',
-    'mode': 'parallel',
-    'overall_status': '$overall_status',
+    'query': os.environ.get('PARALLEL_QUERY', ''),
+    'lang': os.environ.get('PARALLEL_LANG', ''),
+    'mode': os.environ.get('PARALLEL_MODE', 'parallel'),
+    'overall_status': os.environ.get('PARALLEL_OVERALL_STATUS', ''),
     'backends': [
-        {'name': '$primary', 'status': '$p_status', 'result_count': $p_count, 'error': '$(echo "$p_error" | sed "s/['\\\"]//g")'},
-        {'name': '$secondary', 'status': '$s_status', 'result_count': $s_count, 'error': '$(echo "$s_error" | sed "s/['\\\"]//g")'}
+        {
+            'name': os.environ.get('PARALLEL_PRIMARY_NAME', ''),
+            'status': os.environ.get('PARALLEL_PRIMARY_STATUS', ''),
+            'result_count': int(os.environ.get('PARALLEL_PRIMARY_COUNT', '0')),
+            'error': os.environ.get('PARALLEL_PRIMARY_ERROR', ''),
+        },
+        {
+            'name': os.environ.get('PARALLEL_SECONDARY_NAME', ''),
+            'status': os.environ.get('PARALLEL_SECONDARY_STATUS', ''),
+            'result_count': int(os.environ.get('PARALLEL_SECONDARY_COUNT', '0')),
+            'error': os.environ.get('PARALLEL_SECONDARY_ERROR', ''),
+        },
     ],
-    'results': '''$(printf '%s' "$merged_text" | sed "s/['\\\"]//g")''',
-    'errors': []
+    'results': merged_text,
+    'errors': [],
 }
 json.dump(output, sys.stdout, ensure_ascii=False, indent=2)
 print()
-"
+PYEOF
+
+    rm -f "$merged_file"
   else
     merge_results "$tmp1" "$tmp2" "$primary" "$secondary"
   fi
