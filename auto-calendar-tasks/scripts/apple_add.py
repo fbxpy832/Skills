@@ -77,9 +77,11 @@ def make_applescript_date_function() -> str:
     return f"""
 on makeDate(y, m, d, h, minValue, s)
   set theDate to current date
-  set year of theDate to y as integer
-  set month of theDate to item (m as integer) of {{{month_items}}}
+  -- Set day BEFORE month to avoid overflow bug when current day > target month length
+  -- e.g. May 31 → month 6 overflows to July 1 if day is set after month
   set day of theDate to d as integer
+  set month of theDate to item (m as integer) of {{{month_items}}}
+  set year of theDate to y as integer
   set time of theDate to ((h as integer) * hours + (minValue as integer) * minutes + (s as integer))
   return theDate
 end makeDate

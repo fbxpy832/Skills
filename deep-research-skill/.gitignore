@@ -1,7 +1,0 @@
-.DS_Store
-# Prevent accidental commits of local config / secrets
-config.env
-*.env
-!*.env.example
-# OpenCode run artifacts
-.deep-research-runs/

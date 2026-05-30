@@ -241,6 +241,11 @@ DEFAULT_CONFIG = {
     "require_clean_git_before_start": True,
     "logs_dir": "logs",
     "log_retention_days": 30,
+    "opencode_mode": "run",
+    "opencode_session": "",
+    "opencode_attach": "",
+    "opencode_smoke_test": True,
+    "opencode_smoke_timeout_seconds": 120,
     "opencode_flags": ["--dangerously-skip-permissions"],
     "codex_flags": [
         "--dangerously-bypass-approvals-and-sandbox",
@@ -359,24 +364,160 @@ def init_state(task: str, config: Runtime, max_rounds: int) -> dict:
 
 # -- Pre-flight --------------------------------------------------
 
-def preflight_check(config: Runtime):
-    issues = []
+def build_opencode_args(prompt_file: str, message: str, config: dict) -> Tuple[list, Optional[str]]:
+    """Assemble opencode CLI arguments from config. Returns (args, error_message).
+
+    Supported opencode_mode values:
+      - run         : opencode run <message> -f <file>
+      - run-session : opencode run --session <id> <message> -f <file>
+      - run-continue: opencode run --continue <message> -f <file>
+      - run-attach  : opencode run --attach <url> <message> -f <file>
+
+    The positional <message> is placed BEFORE -f/--file so that the --file array
+    option does not consume it as another file path.
+    """
+    opencode_cmd = config.get("opencode_command", "opencode")
+    opencode_flags = config.get("opencode_flags", ["--dangerously-skip-permissions"])
+    opencode_mode = config.get("opencode_mode", "run")
+
+    if not isinstance(opencode_flags, list):
+        return [], "opencode_flags must be a list"
+
+    base_args = [opencode_cmd, "run"] + opencode_flags
+
+    if opencode_mode == "run":
+        pass  # no extra session/attach flags needed
+    elif opencode_mode == "run-session":
+        session = config.get("opencode_session", "")
+        if not session:
+            return [], (
+                "opencode_mode is 'run-session' but opencode_session is empty. "
+                "Set opencode_session in .autoloop/config.json to a valid session ID."
+            )
+        base_args.extend(["--session", session])
+    elif opencode_mode == "run-continue":
+        base_args.append("--continue")
+    elif opencode_mode == "run-attach":
+        attach = config.get("opencode_attach", "")
+        if not attach:
+            return [], (
+                "opencode_mode is 'run-attach' but opencode_attach is empty. "
+                "Set opencode_attach in .autoloop/config.json to a valid OpenCode attach URL."
+            )
+        base_args.extend(["--attach", attach])
+    else:
+        return [], (
+            f"Unknown opencode_mode '{opencode_mode}'. "
+            "Supported values: run, run-session, run-continue, run-attach"
+        )
+
+    return base_args + [message, "-f", prompt_file], None
+
+
+def run_opencode_smoke_test(config: dict, log_dir: Path, timeout: int = 120) -> Tuple[bool, str]:
+    """Run a minimal OpenCode prompt to verify the CLI is functional.
+
+    The prompt file and positional message both contain:
+        "Reply exactly with this text and nothing else: OPENCODE_AUTOLOOP_OK"
+
+    Success is determined by exit code 0 AND the expected string in stdout.
+
+    Returns (ok: bool, detail: str).
+    """
+    smoke_text = "Reply exactly with this text and nothing else: OPENCODE_AUTOLOOP_OK"
+    opencode_cmd = config.get("opencode_command", "opencode")
+
+    if shutil.which(opencode_cmd) is None:
+        return False, f"{opencode_cmd} not found in PATH"
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False,
+                                      prefix="autoloop_smoke_") as tf:
+        tf.write(smoke_text)
+        prompt_file = tf.name
+
+    log_file = log_dir / "opencode-smoke.log"
+
+    try:
+        args, error = build_opencode_args(prompt_file, smoke_text, config)
+        if error:
+            return False, error
+
+        info(f"Running {opencode_cmd} smoke test...")
+
+        exit_code, stdout, stderr = run_command(args, log_file, timeout=timeout)
+
+        if exit_code != 0:
+            detail = (
+                f"OpenCode smoke test failed (exit code {exit_code}).\n"
+                f"  Command: {' '.join(args)}\n"
+                f"  See log: {log_file}"
+            )
+            if stderr:
+                detail += f"\n  stderr: {stderr[:500]}"
+            return False, detail
+
+        if "OPENCODE_AUTOLOOP_OK" not in stdout:
+            return False, (
+                f"OpenCode smoke test: unexpected output (exit 0 but expected text not found).\n"
+                f"  Command: {' '.join(args)}\n"
+                f"  See log: {log_file}\n"
+                f"  stdout tail: {stdout[-300:]}"
+            )
+
+        success(f"OpenCode smoke test passed ({opencode_cmd} responded correctly)")
+        return True, ""
+    finally:
+        try:
+            os.unlink(prompt_file)
+        except OSError:
+            pass
+
+
+def preflight_check(config: Runtime, log_dir: Optional[Path] = None) -> Tuple[bool, str]:
+    """Check binaries exist and, if configured, run OpenCode smoke test.
+
+    Returns (ok: bool, message: str).  When ok=False, the message describes
+    the first blocking issue found.
+    """
     opencode_cmd = config.get("opencode_command", "opencode")
     codex_cmd = config.get("codex_command", "codex")
 
-    if shutil.which(opencode_cmd) is None:
-        issues.append(f"{opencode_cmd} not found in PATH")
-    if shutil.which(codex_cmd) is None:
-        issues.append(f"{codex_cmd} not found in PATH")
-    if shutil.which("git") is None:
-        issues.append("git not found in PATH")
+    # 0. Config mode validation — catch bad config BEFORE planning ------------
+    mode = config.get("opencode_mode", "run")
+    if mode == "run-session" and not config.get("opencode_session", ""):
+        return False, (
+            "opencode_mode is 'run-session' but opencode_session is empty. "
+            "Set opencode_session in .autoloop/config.json to a valid session ID."
+        )
+    if mode == "run-attach" and not config.get("opencode_attach", ""):
+        return False, (
+            "opencode_mode is 'run-attach' but opencode_attach is empty. "
+            "Set opencode_attach in .autoloop/config.json to a valid OpenCode attach URL."
+        )
+    if mode not in ("run", "run-session", "run-continue", "run-attach"):
+        return False, (
+            f"Unknown opencode_mode '{mode}'. "
+            "Supported values: run, run-session, run-continue, run-attach"
+        )
 
-    if issues:
-        warn("Pre-flight check found issues:")
-        for issue in issues:
-            warn(f"  - {issue}")
-    else:
-        success("Pre-flight check passed: opencode, codex, git all available")
+    # 1. Binary presence --------------------------------------------------
+    if shutil.which(opencode_cmd) is None:
+        return False, f"{opencode_cmd} not found in PATH"
+    if shutil.which(codex_cmd) is None:
+        warn(f"{codex_cmd} not found in PATH (Codex review will fail)")
+    if shutil.which("git") is None:
+        return False, "git not found in PATH"
+
+    # 2. Smoke test (optional) --------------------------------------------
+    smoke_enabled = config.get("opencode_smoke_test", False)
+    if smoke_enabled and log_dir:
+        smoke_timeout = config.get("opencode_smoke_timeout_seconds", 120)
+        ok, msg = run_opencode_smoke_test(config.raw, log_dir, timeout=smoke_timeout)
+        if not ok:
+            return False, msg
+
+    success("Pre-flight check passed: opencode, codex, git all available")
+    return True, ""
 
 
 # -- Git --------------------------------------------------------
@@ -651,15 +792,12 @@ def run_command(cmd, log_file: Path, timeout: int = 600,
 
 # -- OpenCode Runner --------------------------------------------
 
-def run_opencode(prompt: str, log_file: Path, timeout: int = 1800,
-                 workdir=None) -> Tuple[int, str, str]:
-    config = load_config()
+def run_opencode(prompt: str, log_file: Path, config: dict,
+                 timeout: int = 1800, workdir=None) -> Tuple[int, str, str]:
     opencode_cmd = config.get("opencode_command", "opencode")
-    opencode_flags = config.get("opencode_flags", ["--dangerously-skip-permissions"])
 
     if shutil.which(opencode_cmd) is None:
         die(f"{opencode_cmd} not found in PATH. Install it or update config.")
-        return 127, "", f"{opencode_cmd} not found in PATH"
 
     workdir = workdir or get_project_root()
 
@@ -671,13 +809,15 @@ def run_opencode(prompt: str, log_file: Path, timeout: int = 1800,
     LAST_PROMPT.parent.mkdir(parents=True, exist_ok=True)
     LAST_PROMPT.write_text(prompt)
 
+    message = "Please read and execute the instructions in the attached file."
+    args, error = build_opencode_args(prompt_file, message, config)
+    if error:
+        die(error)
+
     info(f"Sending prompt to {opencode_cmd}... ({short(prompt, 120)})")
 
     try:
-        args = [opencode_cmd, "run"] + opencode_flags + ["-f", prompt_file,
-                "Please read and execute the instructions in the attached file."]
-        result = run_command(args, log_file, timeout=timeout, cwd=workdir)
-        exit_code, stdout, stderr = result
+        exit_code, stdout, stderr = run_command(args, log_file, timeout=timeout, cwd=workdir)
         if exit_code == 124:
             warn(f"{opencode_cmd} timed out after {timeout}s")
         elif exit_code != 0:
@@ -1190,6 +1330,13 @@ def show_status():
     print(f"  OpenCode timeout: {config.get('opencode_timeout_seconds', 1800)}s")
     print(f"  Codex timeout:    {config.get('codex_timeout_seconds', 900)}s")
     print(f"  Log retention:    {config.get('log_retention_days', 30)} days")
+    print(f"  OpenCode mode:    {config.get('opencode_mode', 'run')}")
+    mode = config.get('opencode_mode', 'run')
+    if mode == 'run-session':
+        print(f"  OpenCode session: {config.get('opencode_session', '(not set)')}")
+    elif mode == 'run-attach':
+        print(f"  OpenCode attach:  {config.get('opencode_attach', '(not set)')}")
+    print(f"  Smoke test:       {'enabled' if config.get('opencode_smoke_test', True) else 'disabled'}")
 
 
 # -- Main Loop --------------------------------------------------
@@ -1242,8 +1389,8 @@ def run_autoloop(task: str, args, rt: Runtime, resume_state: Optional[dict] = No
         return dry_run(task, rt)
 
     info(f"Project root: {get_project_root()}")
-    preflight_check(rt)
 
+    # Git must be checked before we write any state ----------------------------------
     if shutil.which("git") is None:
         die("git not found in PATH")
     if not is_git_repo():
@@ -1261,7 +1408,7 @@ def run_autoloop(task: str, args, rt: Runtime, resume_state: Optional[dict] = No
         rt.get("build_commands", [])
     )
 
-    # Determine starting phase from resume state
+    # Log directory and state — created before preflight so smoke logs land here ---
     start_phase = "planning"
     start_round = 0
     if resume_state:
@@ -1301,6 +1448,15 @@ def run_autoloop(task: str, args, rt: Runtime, resume_state: Optional[dict] = No
     state["last_log_dir"] = str(log_dir)
     save_state(state)
 
+    # Preflight — smoke-test OpenCode BEFORE entering Planning ----------------------
+    preflight_ok, preflight_msg = preflight_check(rt, log_dir)
+    if not preflight_ok:
+        _block(f"Pre-flight check failed: {preflight_msg}",
+               task, log_dir, state, rt, "Pre-flight failed", "UNKNOWN", [],
+               code=5, test_log_hint=log_dir / "opencode-smoke.log")
+
+    # Phase tracking ---------------------------------------------------------------
+
     consecutive_same_test_fails = 0
     last_test_fail_cmd = ""
 
@@ -1315,11 +1471,11 @@ def run_autoloop(task: str, args, rt: Runtime, resume_state: Optional[dict] = No
         plan_log = log_dir / "opencode-plan.log"
         info("Calling OpenCode to generate SPEC.md and TASKS.md...")
 
-        exit_code, stdout, stderr = run_opencode(plan_prompt, plan_log, timeout=opencode_timeout)
+        exit_code, stdout, stderr = run_opencode(plan_prompt, plan_log, rt.raw, timeout=opencode_timeout)
 
         if exit_code == 124:
             warn("OpenCode plan timed out. Retrying once...")
-            exit_code, stdout, stderr = run_opencode(plan_prompt, plan_log, timeout=opencode_timeout)
+            exit_code, stdout, stderr = run_opencode(plan_prompt, plan_log, rt.raw, timeout=opencode_timeout)
 
         elapsed = time.time() - t_phase
         state["elapsed_plan_s"] = elapsed
@@ -1348,11 +1504,11 @@ def run_autoloop(task: str, args, rt: Runtime, resume_state: Optional[dict] = No
         dev_log = log_dir / "opencode-dev.log"
         info("Calling OpenCode for development...")
 
-        exit_code, stdout, stderr = run_opencode(dev_prompt, dev_log, timeout=opencode_timeout)
+        exit_code, stdout, stderr = run_opencode(dev_prompt, dev_log, rt.raw, timeout=opencode_timeout)
 
         if exit_code == 124:
             warn("OpenCode dev timed out. Retrying once...")
-            exit_code, stdout, stderr = run_opencode(dev_prompt, dev_log, timeout=opencode_timeout)
+            exit_code, stdout, stderr = run_opencode(dev_prompt, dev_log, rt.raw, timeout=opencode_timeout)
 
         elapsed = time.time() - t_phase
         state["elapsed_dev_s"] = elapsed
@@ -1389,10 +1545,10 @@ def run_autoloop(task: str, args, rt: Runtime, resume_state: Optional[dict] = No
             info(f"Re-running fix for {len(must_fix_items)} Must Fix items...")
             fix_prompt = generate_fix_prompt(must_fix_items, task)
             fix_log = log_dir / f"opencode-fix-round-{start_round}-resume.log"
-            exit_code, stdout, stderr = run_opencode(fix_prompt, fix_log, timeout=opencode_timeout)
+            exit_code, stdout, stderr = run_opencode(fix_prompt, fix_log, rt.raw, timeout=opencode_timeout)
             if exit_code == 124:
                 warn("Fix timed out. Retrying once...")
-                exit_code, stdout, stderr = run_opencode(fix_prompt, fix_log, timeout=opencode_timeout)
+                exit_code, stdout, stderr = run_opencode(fix_prompt, fix_log, rt.raw, timeout=opencode_timeout)
             if exit_code == 124:
                 _block("OpenCode fix timed out twice (after retry)",
                        task, log_dir, state, rt, "Fix incomplete", "NEEDS_FIX", [], code=5)
@@ -1481,7 +1637,14 @@ Failed commands:
 Read the test output in docs/TEST_RESULT.md and fix the issues.
 """
                 fix_log = log_dir / f"opencode-testfix-round-{round_num}.log"
-                run_opencode(fix_prompt, fix_log, timeout=opencode_timeout)
+                exit_code, stdout, stderr = run_opencode(fix_prompt, fix_log, rt.raw, timeout=opencode_timeout)
+                if exit_code == 124:
+                    warn("Test fix timed out. Retrying once...")
+                    exit_code, stdout, stderr = run_opencode(fix_prompt, fix_log, rt.raw, timeout=opencode_timeout)
+                if exit_code == 124:
+                    warn("Test fix timed out twice. Continuing with test re-run anyway.")
+                elif exit_code != 0:
+                    warn(f"Test fix exited with code {exit_code}")
 
                 test_log2 = log_dir / f"test-round-{round_num}-retry.log"
                 test_results2 = []
@@ -1563,11 +1726,11 @@ Read the test output in docs/TEST_RESULT.md and fix the issues.
 
             fix_prompt = generate_fix_prompt(verdict["must_fix"], task)
             fix_log = log_dir / f"opencode-fix-round-{round_num}.log"
-            exit_code, stdout, stderr = run_opencode(fix_prompt, fix_log, timeout=opencode_timeout)
+            exit_code, stdout, stderr = run_opencode(fix_prompt, fix_log, rt.raw, timeout=opencode_timeout)
 
             if exit_code == 124:
                 warn("Fix timed out. Retrying once...")
-                exit_code, stdout, stderr = run_opencode(fix_prompt, fix_log, timeout=opencode_timeout)
+                exit_code, stdout, stderr = run_opencode(fix_prompt, fix_log, rt.raw, timeout=opencode_timeout)
 
             if exit_code == 124:
                 _block("OpenCode fix timed out twice (after retry)",
@@ -1641,7 +1804,10 @@ def run_fix_only(task: str, rt: Runtime, args):
     fix_log = log_dir / f"opencode-fix-standalone-{now_ts()}.log"
 
     opencode_timeout = rt.get("opencode_timeout_seconds", 1800)
-    exit_code, stdout, stderr = run_opencode(fix_prompt, fix_log, timeout=opencode_timeout)
+    exit_code, stdout, stderr = run_opencode(fix_prompt, fix_log, rt.raw, timeout=opencode_timeout)
+    if exit_code == 124:
+        warn("Fix timed out. Retrying once...")
+        exit_code, stdout, stderr = run_opencode(fix_prompt, fix_log, rt.raw, timeout=opencode_timeout)
     if exit_code == 0:
         success("Fix complete.")
     else:

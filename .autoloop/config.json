@@ -11,6 +11,7 @@
   "auto_commit": false,
   "require_clean_git_before_start": true,
   "logs_dir": "logs",
+  "log_retention_days": 30,
   "opencode_flags": [
     "--dangerously-skip-permissions"
   ],
@@ -29,12 +30,10 @@
     ".next/*",
     "venv/*",
     ".git/*",
-    "__pycache__/*"
-  ],
-  "log_retention_days": 30,
-  "opencode_mode": "run",
-  "opencode_session": "",
-  "opencode_attach": "",
-  "opencode_smoke_test": true,
-  "opencode_smoke_timeout_seconds": 120
+    "__pycache__/*",
+    "*.lock",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml"
+  ]
 }

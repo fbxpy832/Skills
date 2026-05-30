@@ -1,0 +1,7 @@
+{
+  "_comment": "a-stock-trigger configuration file",
+  "tushare_token": "037f7638555ea08113cd39733b1653e9da6546a8deb630148f08e56a",
+  "watchlist": [
+    "603629.SH"
+  ]
+}

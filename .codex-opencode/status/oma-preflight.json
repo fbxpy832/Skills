@@ -1,0 +1,6 @@
+{
+  "time": "2026-05-19 13:53:04",
+  "oma_available": true,
+  "trigger_test_status": "passed",
+  "note": "OMA availability is best-effort unless trigger_test_status is passed."
+}
