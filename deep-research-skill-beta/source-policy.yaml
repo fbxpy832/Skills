@@ -188,13 +188,13 @@ task_source_priority:
   business_decision:
     priority_order:
       - uploaded_files
+      - external_authoritative
       - lark_wiki
       - local_vault
-      - external_authoritative
       - external_media
       - notebooklm
       - model_reasoning
-    note: "必须区分内部口径、外部公开事实、AI 推理判断、待核验数据"
+    note: "内部来源（lark_wiki、local_vault）只用于补充业务背景和项目上下文，核心外部事实（市场数据、竞品信息、政策法规）仍需外部权威来源核验。必须区分内部口径、外部公开事实、AI 推理判断、待核验数据"
 
   government_report:
     priority_order:
@@ -213,22 +213,15 @@ task_source_priority:
 
   technical_route:
     priority_order:
-      - local_wiki
       - external_authoritative
+      - local_wiki
       - external_media
       - uploaded_files
       - lark_wiki
       - local_vault
       - notebooklm
       - model_reasoning
-    note: "local_wiki 用于技术原理，不用于最新事实判断。最新论文和产品进展必须通过外部来源核验"
-    required_sources:
-      - "IEEE Xplore"
-      - "arXiv"
-      - "ACM Digital Library"
-      - "ISSCC/IEDM/Hot Chips"
-      - "公司官网"
-      - "专利数据库"
+    note: "local_wiki 只用于技术原理解释和术语理解，不支撑最新产业状态、论文进展、产品状态。最新论文和产品进展必须通过外部权威来源核验（IEEE Xplore、arXiv、ACM、公司官网等）"
 
   investment_analysis:
     priority_order:

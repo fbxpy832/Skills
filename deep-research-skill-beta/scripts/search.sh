@@ -166,8 +166,12 @@ detect_language() {
 cache_key() {
   local backend="$1"
   local query="$2"
-  local extra="$3"  # e.g. ":parallel" or ":json"
-  echo "${backend}:$(echo "$query" | md5 | head -c 16):c${COUNT}:f${FRESHNESS:0:2}:l${LANG}${extra}"
+  local extra="${3:-}"  # e.g. ":parallel" or ""
+  local json_flag=""
+  if [ "$RAW_JSON" = true ]; then
+    json_flag=":json"
+  fi
+  echo "${backend}:$(echo "$query" | md5 | head -c 16):c${COUNT}:f${FRESHNESS:0:2}:l${LANG}${extra}${json_flag}"
 }
 
 cache_get() {
@@ -669,7 +673,12 @@ search_parallel() {
   if [ "$e1" != "0" ]; then
     echo "SEARCH_STATUS: $overall_status" >&2
     echo "FAILURE_TYPE: web_search_failed" >&2
+    echo "FAILED_SOURCE_TYPE: external_media" >&2
+    echo "FAILED_SOURCE_DETAIL: Parallel search failed for query '${QUERY}'" >&2
     echo "ATTEMPTED_BACKENDS: $primary:$p_status,$secondary:$s_status" >&2
+    echo "FALLBACK_PATH: none (parallel mode)" >&2
+    echo "FAILURE_DETAIL: primary=$p_status secondary=$s_status primary_error='$p_error' secondary_error='$s_error'" >&2
+    echo "SUGGESTED_NEXT_QUERIES: Consider broadening query or using different terms" >&2
   fi
 
   # Output results
@@ -782,89 +791,155 @@ search_sequential() {
   fi
 
   echo "[SEARCH] $backend: $QUERY" >&2
-  local result
+  local result=""
   local search_lang=""
   if [ "$detected_lang" = "zh" ]; then
     search_lang="zh"
   fi
 
-  # Try primary backend
+  # Try primary backend, then fallback(s)
   local search_ok=false
   local final_backend="$backend"
+  local attempted=""
+  local failure_detail=""
 
+  # ── Primary: bocha ──────────────────────────────────────────
   if [ "$backend" = "bocha" ]; then
+    attempted="bocha"
     if result=$(retry "$MAX_RETRIES" search_bocha "$QUERY" "$COUNT"); then
       if echo "$result" | format_bocha_results > /dev/null 2>&1; then
         search_ok=true
       else
         echo "WARNING: Bocha returned no results, falling back to Brave..." >&2
-        final_backend="brave"
+        failure_detail="bocha:no_results"
       fi
     else
       echo "WARNING: Bocha search failed, falling back to Brave..." >&2
-      final_backend="brave"
+      failure_detail="bocha:api_failed"
     fi
+
+    # Fallback: Brave
+    if [ "$search_ok" != true ] && [ -n "$BRAVE_API_KEY" ]; then
+      attempted="${attempted}:brave"
+      if result=$(retry "$MAX_RETRIES" search_brave "$QUERY" "$COUNT" "$search_lang"); then
+        if echo "$result" | format_brave_results > /dev/null 2>&1; then
+          final_backend="brave"
+          search_ok=true
+        else
+          failure_detail="${failure_detail}:brave:no_results"
+        fi
+      else
+        failure_detail="${failure_detail}:brave:api_failed"
+      fi
+    fi
+
+  # ── Primary: exa ───────────────────────────────────────────
   elif [ "$backend" = "exa" ]; then
+    attempted="exa"
     if result=$(retry "$MAX_RETRIES" search_exa "$QUERY" "$COUNT"); then
       if echo "$result" | format_exa_results > /dev/null 2>&1; then
         search_ok=true
       else
         echo "WARNING: Exa returned no results, falling back to Brave..." >&2
-        final_backend="brave"
+        failure_detail="exa:no_results"
       fi
     else
       echo "WARNING: Exa search failed, falling back to Brave..." >&2
-      final_backend="brave"
+      failure_detail="exa:api_failed"
     fi
+
+    # Fallback: Brave
+    if [ "$search_ok" != true ] && [ -n "$BRAVE_API_KEY" ]; then
+      attempted="${attempted}:brave"
+      if result=$(retry "$MAX_RETRIES" search_brave "$QUERY" "$COUNT"); then
+        if echo "$result" | format_brave_results > /dev/null 2>&1; then
+          final_backend="brave"
+          search_ok=true
+        else
+          failure_detail="${failure_detail}:brave:no_results"
+        fi
+      else
+        failure_detail="${failure_detail}:brave:api_failed"
+      fi
+    fi
+
+  # ── Primary: brave ─────────────────────────────────────────
   else
+    attempted="brave"
     if result=$(retry "$MAX_RETRIES" search_brave "$QUERY" "$COUNT" "$search_lang"); then
       if echo "$result" | format_brave_results > /dev/null 2>&1; then
         search_ok=true
       else
         echo "WARNING: Brave returned no results." >&2
-        # Try fallback backends
+        failure_detail="brave:no_results"
+        # Fallback: Bocha
         if [ -n "$BOCHA_API_KEY" ]; then
           echo "Falling back to Bocha..." >&2
+          attempted="${attempted}:bocha"
           if result=$(retry "$MAX_RETRIES" search_bocha "$QUERY" "$COUNT"); then
             if echo "$result" | format_bocha_results > /dev/null 2>&1; then
               final_backend="bocha"
               search_ok=true
+            else
+              failure_detail="${failure_detail}:bocha:no_results"
             fi
+          else
+            failure_detail="${failure_detail}:bocha:api_failed"
           fi
         fi
+        # Fallback: Exa
         if [ "$search_ok" != true ] && [ -n "$EXA_API_KEY" ]; then
           echo "Falling back to Exa..." >&2
+          attempted="${attempted}:exa"
           if result=$(retry "$MAX_RETRIES" search_exa "$QUERY" "$COUNT"); then
             if echo "$result" | format_exa_results > /dev/null 2>&1; then
               final_backend="exa"
               search_ok=true
+            else
+              failure_detail="${failure_detail}:exa:no_results"
             fi
+          else
+            failure_detail="${failure_detail}:exa:api_failed"
           fi
         fi
       fi
     else
       echo "ERROR: Brave search failed after $MAX_RETRIES attempts." >&2
+      failure_detail="brave:api_failed"
+      # Fallback: Bocha
       if [ -n "$BOCHA_API_KEY" ]; then
         echo "Falling back to Bocha..." >&2
+        attempted="${attempted}:bocha"
         if result=$(retry "$MAX_RETRIES" search_bocha "$QUERY" "$COUNT"); then
           final_backend="bocha"
           search_ok=true
+        else
+          failure_detail="${failure_detail}:bocha:api_failed"
         fi
       fi
+      # Fallback: Exa
       if [ "$search_ok" != true ] && [ -n "$EXA_API_KEY" ]; then
         echo "Falling back to Exa..." >&2
+        attempted="${attempted}:exa"
         if result=$(retry "$MAX_RETRIES" search_exa "$QUERY" "$COUNT"); then
           final_backend="exa"
           search_ok=true
+        else
+          failure_detail="${failure_detail}:exa:api_failed"
         fi
       fi
     fi
   fi
 
   if [ "$search_ok" != true ]; then
-    echo "SEARCH_STATUS: no_results" >&2
+    echo "SEARCH_STATUS: failed" >&2
     echo "FAILURE_TYPE: web_search_failed" >&2
-    echo "ATTEMPTED_BACKENDS: $backend,$final_backend" >&2
+    echo "FAILED_SOURCE_TYPE: external_media" >&2
+    echo "FAILED_SOURCE_DETAIL: All backends exhausted for query '${QUERY}'" >&2
+    echo "ATTEMPTED_BACKENDS: ${attempted}" >&2
+    echo "FALLBACK_PATH: ${attempted}" >&2
+    echo "FAILURE_DETAIL: ${failure_detail}" >&2
+    echo "SUGGESTED_NEXT_QUERIES: Consider broadening query or using different terms" >&2
     return 1
   fi
 

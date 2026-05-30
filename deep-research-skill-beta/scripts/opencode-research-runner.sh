@@ -411,10 +411,24 @@ Parallel execution rules:
 
 Special rules:
 
+- source_agent: Use $SCRIPT_DIR/search.sh "query" [--parallel] [--json] for all external web searches.
+- source_agent: Use $SCRIPT_DIR/knowledge-retrieval.sh "query" [--json] for all internal knowledge base searches.
+- source_agent: Execution context with search preflight is at $execution_context_file.
+- source_agent: Source failure log is at $source_failure_log_file. Append entries on web search or knowledge retrieval failure.
+- source_agent: On search failure, output: failed_source_type, failure_type, attempted_backends, fallback_path, search_status, suggested_next_queries.
+- writer_agent: Read $source_failure_log_file and $execution_context_file. Determine search_status, report_usability, audit_grade from these.
+- writer_agent: If source_failure_log_file has failure entries, include degradation markers in filename and report header.
+- writer_agent: Filename format: 研究主题-报告类型[-来源类型][-离线初稿|-待联网核验版][-v2]-YYYY-MM-DD.md
+- writer_agent: Report title format (h1): # 研究主题：报告类型
+- reviewer_agent: Check $source_failure_log_file. If it contains real failure entries, high_quality audit_grade must NOT be PASS.
+- reviewer_agent: If search_status is failed/partial_success, verify that filename and report header contain degradation markers.
 - writer_agent must include mode, execution mode, subagent/model mapping, source limitations, data gaps, and next-step recommendation.
 - writer_agent must include real_model_detection_status, model_route_execution_status, search_status, audit_grade placeholder, report_usability, and required_source_verification.
 - reviewer_agent must state PASS / CONDITIONAL_PASS / FAIL and whether the final report is publish-ready.
 - high_quality must not PASS if actual model cannot be verified, if web/source collection failed, or if source_failure_log contains failure entries.
+- writer_agent must generate a final report file in DEEP_RESEARCH_OUTPUT_DIR with the new filename format (date last).
+- writer_agent must not overwrite existing user files; append -v2, -v3 if needed.
+- writer_agent: Remove unsafe characters /\:*?"<>| from filenames.
 EOF
 }
 
@@ -578,6 +592,160 @@ run_stage() {
   fi
 }
 
+# ─── Finalize: generate final report file ─────────────────────────
+finalize_report() {
+  local writer_file="$OUTPUT_DIR/outputs/06-writer_agent.md"
+  local final_dir="${DEEP_RESEARCH_OUTPUT_DIR:-$OUTPUT_DIR/final}"
+  mkdir -p "$final_dir"
+
+  if [ ! -f "$writer_file" ]; then
+    echo "WARNING: writer_agent output not found, skipping final report generation." >&2
+    write_event "run" "" "finalize_skipped" "" "not_verified" "Final report skipped (writer output not found)" ""
+    return 0
+  fi
+
+  # Extract metadata from writer output or use task file summary as fallback
+  local report_title research_topic report_type search_status source_types report_usability
+  report_title=$(grep -i "^report_title:\|^# " "$writer_file" 2>/dev/null | head -1 | sed 's/^.*://; s/^# //; s/^ *//; s/ *$//' | head -c 80 || echo "")
+  research_topic=$(head -1 "$TASK_FILE" 2>/dev/null | sed 's/^# *//; s/[\/:*?"<>|]//g; s/ *$//' | head -c 60 || echo "research")
+  report_type=$(grep -i "report_type:\|任务类型:" "$writer_file" "$execution_context_file" 2>/dev/null | head -1 | sed 's/^.*://; s/^ *//; s/ *$//' | head -c 30 || echo "研究报告")
+  search_status=$(grep -i "search_status:" "$writer_file" "$source_failure_log_file" 2>/dev/null | head -1 | sed 's/^.*://; s/^ *//; s/ *$//' | head -c 20 || echo "unknown")
+  source_types=$(grep -i "source_types:\|来源使用情况:" "$writer_file" 2>/dev/null | head -1 | sed 's/^.*://; s/^ *//; s/ *$//' | head -c 40 || echo "")
+  report_usability=$(grep -i "report_usability:\|报告可用性:" "$writer_file" 2>/dev/null | head -1 | sed 's/^.*://; s/^ *//; s/ *$//' | head -c 20 || echo "正式版")
+
+  # Clean up research topic and report type
+  if [ -z "$report_title" ] || [ "$report_title" = "标题" ]; then
+    report_title="$research_topic"
+  fi
+  if [ -z "$research_topic" ] || [ "$research_topic" = "标题" ]; then
+    research_topic="$report_title"
+  fi
+
+  # Build filename components
+  local topic_clean type_clean source_tag deg_tag version_tag date_tag filename
+  topic_clean=$(echo "$research_topic" | sed 's/[\/:*?"<>|]//g; s/  */ /g; s/^ *//; s/ *$//' | head -c 60)
+  type_clean=$(echo "$report_type" | sed 's/[\/:*?"<>|]//g; s/  */ /g; s/^ *//; s/ *$//' | head -c 30)
+  date_tag=$(date '+%Y-%m-%d')
+
+  # Determine source composition tag
+  source_tag=""
+  if [ -n "$source_types" ]; then
+    local has_external has_local has_model
+    has_external=$(echo "$source_types" | grep -ci "external" || echo "0")
+    has_local=$(echo "$source_types" | grep -ci "local\|vault\|wiki" || echo "0")
+    has_model=$(echo "$source_types" | grep -ci "model_reasoning\|推理" || echo "0")
+    if [ "$has_external" -gt 0 ] && [ "$has_local" -gt 0 ] && [ "$has_model" -gt 0 ]; then
+      source_tag="-多源版"
+    elif [ "$has_local" -gt 0 ] && [ "$has_model" -gt 0 ] && [ "$has_external" -eq 0 ]; then
+      source_tag="-Vault版"
+    elif [ "$has_model" -gt 0 ] && [ "$has_external" -eq 0 ] && [ "$has_local" -eq 0 ]; then
+      source_tag="-模型推理版"
+    fi
+  fi
+
+  # Determine degradation tag
+  deg_tag=""
+  if echo "$search_status" | grep -qi "failed\|no_results" 2>/dev/null; then
+    deg_tag="-离线初稿"
+  elif echo "$search_status" | grep -qi "partial_success" 2>/dev/null; then
+    if echo "$report_usability" | grep -qi "内部初稿" 2>/dev/null; then
+      deg_tag="-待联网核验版"
+    else
+      deg_tag="-离线初稿"
+    fi
+  fi
+
+  # Check source_failure_log for real entries to decide degradation
+  if [ -f "$source_failure_log_file" ]; then
+    local failure_count
+    failure_count=$(grep -c "failure_time:" "$source_failure_log_file" 2>/dev/null || echo "0")
+    if [ "$failure_count" -gt 0 ] && [ -z "$deg_tag" ]; then
+      deg_tag="-待联网核验版"
+    fi
+  fi
+
+  # Build final filename: 研究主题-报告类型[-来源类型][-离线初稿|-待联网核验版][-v2]-YYYY-MM-DD.md
+  local base_name
+  base_name="${topic_clean}-${type_clean}${source_tag}${deg_tag}"
+
+  # Check for version conflict
+  version_tag=""
+  filename="${base_name}-${date_tag}.md"
+  if [ -f "$final_dir/$filename" ]; then
+    local v=2
+    while [ -f "${final_dir}/${base_name}-v${v}-${date_tag}.md" ]; do
+      v=$((v + 1))
+    done
+    version_tag="-v${v}"
+    filename="${base_name}${version_tag}-${date_tag}.md"
+  fi
+
+  # Build the final report
+  {
+    echo "# ${topic_clean}：${type_clean}"
+    echo ""
+    if [ -n "$deg_tag" ]; then
+      echo "---"
+      echo "⚠️ 本报告为${deg_tag#-} / 待联网核验版"
+      echo "搜索状态: ${search_status:-unknown}"
+      echo "报告可用性: ${report_usability:-内部初稿}"
+      echo "版次说明: 本稿基于当前可用的 (本地资料 / 部分外部资料 / AI 推理) 生成，部分核心数据未得到权威来源核验。"
+      echo "---"
+      echo ""
+    fi
+    echo "## 报告信息"
+    echo ""
+    echo "- 生成日期: $(date '+%Y-%m-%d')"
+    echo "- 运行模式: $MODE"
+    echo "- 搜索状态: ${search_status:-unknown}"
+    echo "- 报告可用性: ${report_usability:-正式版}"
+    echo "- 来源类型: ${source_types:-未分类}"
+    if [ -f "$source_failure_log_file" ]; then
+      echo "- source_failure_log: $source_failure_log_file"
+    fi
+    echo "- 来源文件: $writer_file"
+    echo ""
+    echo "---"
+    echo ""
+    echo "> 本文件由 writer_agent 输出生成。完整内容见: $writer_file"
+    echo ""
+    echo "## 数据局限性"
+    echo ""
+    echo "- 本报告的部分数据可能缺少权威来源核验"
+    echo "- 关键决策前请人工核实核心数据"
+    echo ""
+    if [ -n "$deg_tag" ]; then
+      echo "## 联网核验恢复清单"
+      echo ""
+      echo "本次研究存在以下来源缺口，联网核验版生成前需补充："
+      echo ""
+      echo "| 序号 | 研究维度 | 缺失来源类型 | 核验优先级 |"
+      echo "|------|---------|-------------|-----------|"
+      echo "| 1 | 全部 | 待从 writer_agent 输出中提取 | 高 |"
+      echo ""
+    fi
+  } > "$filename" 2>/dev/null || {
+    # Fallback: write to output dir
+    filename="$final_dir/$filename"
+    {
+      echo "# ${topic_clean}：${type_clean}"
+      echo ""
+      if [ -n "$deg_tag" ]; then
+        echo "---"
+        echo "⚠️ 本报告为${deg_tag#-} / 待联网核验版"
+        echo "搜索状态: ${search_status:-unknown}"
+        echo "报告可用性: ${report_usability:-内部初稿}"
+        echo "---"
+        echo ""
+      fi
+      echo "完整内容见 writer_agent 输出: $writer_file"
+    } > "$filename"
+  }
+
+  write_event "run" "" "finalized" "" "not_verified" "Final report: $filename" ""
+  echo "Final report: $filename"
+}
+
 cat > "$summary_file" <<EOF
 # Deep Research OpenCode Run
 
@@ -617,6 +785,31 @@ cat > "$execution_context_file" <<EOF
 - model_statement_rule: Do not claim a requested model was actually used unless OpenCode logs, command output, or UI state verifies it.
 - high_quality_limit: If actual model cannot be verified, high_quality output cannot be PASS.
 
+## Search Preflight
+
+- search_script: $SCRIPT_DIR/search.sh
+- knowledge_retrieval_script: $SCRIPT_DIR/knowledge-retrieval.sh
+- BOCHA_API_KEY: $(if [ -n "${BOCHA_API_KEY:-}" ]; then echo "configured"; else echo "NOT_SET"; fi)
+- EXA_API_KEY: $(if [ -n "${EXA_API_KEY:-}" ]; then echo "configured"; else echo "NOT_SET"; fi)
+- BRAVE_API_KEY: $(if [ -n "${BRAVE_API_KEY:-}" ]; then echo "configured"; else echo "NOT_SET"; fi)
+- external_search_available: $(if [ -n "${BOCHA_API_KEY:-}${EXA_API_KEY:-}${BRAVE_API_KEY:-}" ]; then echo "true"; else echo "false"; fi)
+- cache_dir: $(mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}/deep-research-skill" 2>/dev/null; echo "${XDG_CACHE_HOME:-$HOME/.cache}/deep-research-skill")
+- count_file: $(mkdir -p "${XDG_STATE_HOME:-$HOME/.local/state}/deep-research-skill" 2>/dev/null; echo "${XDG_STATE_HOME:-$HOME/.local/state}/deep-research-skill/search-count")
+
+## Knowledge Source Preflight
+
+- knowledge_lark: $(if "$SCRIPT_DIR/knowledge-lark.sh" --check &>/dev/null 2>&1; then echo "available"; else echo "unavailable"; fi)
+- knowledge_obsidian: $(if "$SCRIPT_DIR/knowledge-obsidian.sh" --check &>/dev/null 2>&1; then echo "available"; else echo "unavailable"; fi)
+- knowledge_notebooklm: $(if "$SCRIPT_DIR/knowledge-notebooklm.sh" --check &>/dev/null 2>&1; then echo "available"; else echo "unavailable"; fi)
+
+## Search Budget
+
+- budget: $(if [ "$MODE" = "high_quality" ]; then echo "15"; elif [ "$MODE" = "balanced" ]; then echo "8"; else echo "3"; fi)
+
+## Required Agent Commands
+
+- source_agent must call: $SCRIPT_DIR/search.sh "query" [--parallel] [--json]
+- source_agent must call: $SCRIPT_DIR/knowledge-retrieval.sh "query" [--json]
 EOF
 
 cat > "$source_failure_log_file" <<EOF
@@ -644,7 +837,71 @@ source_failure_log:
 \`\`\`
 EOF
 
+# Preflight: check search API keys
+if [ -z "${BOCHA_API_KEY:-}" ] && [ -z "${EXA_API_KEY:-}" ] && [ -z "${BRAVE_API_KEY:-}" ]; then
+  cat >> "$source_failure_log_file" <<EOF
+
+## Failure Entry
+
+\`\`\`yaml
+source_failure_log:
+  - failure_time: "$(date '+%Y-%m-%d %H:%M:%S')"
+    failed_task: "外部搜索初始化"
+    failed_source_type: "external_authoritative"
+    failed_source_detail: "No search API keys configured (BOCHA_API_KEY/EXA_API_KEY/BRAVE_API_KEY)"
+    failure_type: "web_search_failed"
+    failure_stage: "Phase_2_资料搜索"
+    affected_scope: "全文"
+    affected_conclusions: "所有依赖外部搜索的结论"
+    fallback_handling: "仅依赖本地资料和 AI 推理"
+    fallback_source_level: "none"
+    confidence_impact: "high"
+    report_usability_marking: "离线初稿"
+    audit_grade_cap: "CONDITIONAL_PASS"
+    required_manual_sources:
+      - 配置至少一个搜索 API key 后重新运行
+    suggested_databases_or_keywords:
+      - 手动搜索相关关键词并补充
+\`\`\`
+EOF
+  echo "WARNING: No search API keys configured. external_search_available=false" >&2
+fi
+
+# Preflight: check knowledge adapters
+if ! "$SCRIPT_DIR/knowledge-lark.sh" --check &>/dev/null 2>&1 && \
+   ! "$SCRIPT_DIR/knowledge-obsidian.sh" --check &>/dev/null 2>&1 && \
+   ! "$SCRIPT_DIR/knowledge-notebooklm.sh" --check &>/dev/null 2>&1; then
+  cat >> "$source_failure_log_file" <<EOF
+
+## Failure Entry
+
+\`\`\`yaml
+source_failure_log:
+  - failure_time: "$(date '+%Y-%m-%d %H:%M:%S')"
+    failed_task: "知识库检索初始化"
+    failed_source_type: "local_vault"
+    failed_source_detail: "No knowledge adapters available (lark/obsidian/notebooklm)"
+    failure_type: "local_source_unavailable"
+    failure_stage: "Phase_2_资料搜索"
+    affected_scope: "内部资料相关章节"
+    affected_conclusions: "依赖内部知识库的结论"
+    fallback_handling: "仅依赖外部搜索和 AI 推理"
+    fallback_source_level: "none"
+    confidence_impact: "reduced"
+    report_usability_marking: "内部初稿"
+    audit_grade_cap: "CONDITIONAL_PASS"
+    required_manual_sources:
+      - 配置知识库适配器或手动补充内部资料
+    suggested_databases_or_keywords:
+      - 根据任务类型补充内部资料
+\`\`\`
+EOF
+  echo "WARNING: No knowledge adapters configured. Local knowledge unavailable." >&2
+fi
+
 write_event "run" "" "started" "" "not_verified" "Deep Research OpenCode run started" ""
+
+write_event "run" "" "preflight_complete" "" "not_verified" "Preflight checks complete" ""
 
 for agent in planner_agent source_agent long_context_agent analyst_agent scenario_agent writer_agent reviewer_agent; do
   if agent_enabled "$agent"; then
@@ -659,6 +916,9 @@ run_stage "evidence_collection" source_agent long_context_agent
 run_stage "analysis_and_scenario" analyst_agent scenario_agent
 run_stage "writing" writer_agent
 run_stage "review" reviewer_agent
+
+# Generate final report file
+finalize_report
 
 cat >> "$summary_file" <<EOF
 
@@ -703,3 +963,4 @@ echo "Deep Research OpenCode run complete."
 echo "Summary: $summary_file"
 echo "Events: $events_file"
 echo "Outputs: $OUTPUT_DIR/outputs"
+echo "Final report: ${DEEP_RESEARCH_OUTPUT_DIR:-$OUTPUT_DIR/final}"
