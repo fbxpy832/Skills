@@ -44,6 +44,9 @@ SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ROUTER="$SCRIPT_DIR/model-router.sh"
 CONFIG_ENV="${DEEP_RESEARCH_CONFIG_ENV:-${DEEP_RESEARCH_SKILL_CONFIG_DIR:-$HOME/.config/deep-research-skill}/config.env}"
 
+# Save caller's runtime overrides before config.env overwrites them
+_RUNTIME_OUTPUT_DIR="${DEEP_RESEARCH_OUTPUT_DIR:-}"
+
 if [ -f "$CONFIG_ENV" ]; then
   # shellcheck disable=SC1090
   source "$CONFIG_ENV"
@@ -51,6 +54,9 @@ else
   echo "WARNING: Local config not found: $CONFIG_ENV"
   echo "Run $SCRIPT_DIR/setup.sh to configure model providers, endpoints, credentials, and search API keys."
 fi
+
+# Restore caller's runtime overrides (config.env should set defaults, not override runtime)
+[ -n "$_RUNTIME_OUTPUT_DIR" ] && DEEP_RESEARCH_OUTPUT_DIR="$_RUNTIME_OUTPUT_DIR"
 
 if [ ! -x "$ROUTER" ]; then
   echo "ERROR: Model router is not executable: $ROUTER"

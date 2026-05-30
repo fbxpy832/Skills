@@ -129,6 +129,37 @@ fi
 
 # ─── 辅助函数 ────────────────────────────────────────────────────
 
+# Check whether raw search output contains actual results (vs "no_results")
+# Returns 0 if results exist, 1 if no results
+has_search_results() {
+  local raw_file="$1"
+  python3 -c "
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+    if isinstance(data, dict):
+        # Explicit no_results marker
+        if data.get('search_status') == 'no_results':
+            sys.exit(1)
+        # Brave: webPages.value exists and is non-empty
+        wp = data.get('webPages') or {}
+        if wp.get('value'):
+            sys.exit(0)
+        # Bocha: data.webPages.value exists
+        inner = data.get('data') or {}
+        bwp = inner.get('webPages') or {}
+        if bwp.get('value'):
+            sys.exit(0)
+        # Exa: results list is non-empty
+        if data.get('results'):
+            sys.exit(0)
+    sys.exit(1)
+except Exception:
+    sys.exit(1)
+" "$raw_file" 2>/dev/null || return 1
+  return 0
+}
+
 proxy_setup() {
   if nc -z -w 1 "$PROXY_HOST" "$PROXY_PORT" 2>/dev/null; then
     export https_proxy="http://${PROXY_HOST}:${PROXY_PORT}"
@@ -579,10 +610,14 @@ search_parallel() {
     if [ -n "$p_result" ]; then
       echo "[CACHE HIT] $primary: $QUERY" >&2
       echo "$p_result" > "$raw1"
-      echo "$p_result" | $primary_format > "$tmp1" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp1}.exit"
+      if has_search_results "$raw1"; then
+        echo "$p_result" | $primary_format > "$tmp1" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp1}.exit"
+      else
+        echo "1" > "${tmp1}.exit"
+      fi
       echo "0" > "${tmp1}.status"
     else
-      $primary_search "$QUERY" "$COUNT" > "$raw1" 2>/dev/null; r1=$?
+      $primary_search "$QUERY" "$COUNT" "$detected_lang" > "$raw1" 2>/dev/null; r1=$?
       echo "$r1" > "${tmp1}.status"
       if [ "$r1" = "0" ]; then
         cache_set "$p_ckey" "$(cat "$raw1")"
@@ -602,10 +637,14 @@ search_parallel() {
     if [ -n "$s_result" ]; then
       echo "[CACHE HIT] $secondary: $QUERY" >&2
       echo "$s_result" > "$raw2"
-      echo "$s_result" | $secondary_format > "$tmp2" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp2}.exit"
+      if has_search_results "$raw2"; then
+        echo "$s_result" | $secondary_format > "$tmp2" 2>/dev/null; echo "${PIPESTATUS[1]}" > "${tmp2}.exit"
+      else
+        echo "1" > "${tmp2}.exit"
+      fi
       echo "0" > "${tmp2}.status"
     else
-      $secondary_search "$QUERY" "$COUNT" > "$raw2" 2>/dev/null; r2=$?
+      $secondary_search "$QUERY" "$COUNT" "$detected_lang" > "$raw2" 2>/dev/null; r2=$?
       echo "$r2" > "${tmp2}.status"
       if [ "$r2" = "0" ]; then
         cache_set "$s_ckey" "$(cat "$raw2")"
