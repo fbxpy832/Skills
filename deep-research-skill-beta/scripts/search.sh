@@ -141,9 +141,9 @@ try:
         # Explicit no_results marker
         if data.get('search_status') == 'no_results':
             sys.exit(1)
-        # Brave: webPages.value exists and is non-empty
-        wp = data.get('webPages') or {}
-        if wp.get('value'):
+        # Brave: web.results exists and is non-empty
+        web = data.get('web') or {}
+        if web.get('results'):
             sys.exit(0)
         # Bocha: data.webPages.value exists
         inner = data.get('data') or {}
@@ -617,7 +617,12 @@ search_parallel() {
       fi
       echo "0" > "${tmp1}.status"
     else
-      $primary_search "$QUERY" "$COUNT" "$detected_lang" > "$raw1" 2>/dev/null; r1=$?
+      # Only pass lang to brave; bocha/exa don't accept it
+      if [ "$primary" = "brave" ]; then
+        search_brave "$QUERY" "$COUNT" "$detected_lang" > "$raw1" 2>/dev/null; r1=$?
+      else
+        $primary_search "$QUERY" "$COUNT" > "$raw1" 2>/dev/null; r1=$?
+      fi
       echo "$r1" > "${tmp1}.status"
       if [ "$r1" = "0" ]; then
         cache_set "$p_ckey" "$(cat "$raw1")"
@@ -644,7 +649,12 @@ search_parallel() {
       fi
       echo "0" > "${tmp2}.status"
     else
-      $secondary_search "$QUERY" "$COUNT" "$detected_lang" > "$raw2" 2>/dev/null; r2=$?
+      # Only pass lang to brave; bocha/exa don't accept it
+      if [ "$secondary" = "brave" ]; then
+        search_brave "$QUERY" "$COUNT" "$detected_lang" > "$raw2" 2>/dev/null; r2=$?
+      else
+        $secondary_search "$QUERY" "$COUNT" > "$raw2" 2>/dev/null; r2=$?
+      fi
       echo "$r2" > "${tmp2}.status"
       if [ "$r2" = "0" ]; then
         cache_set "$s_ckey" "$(cat "$raw2")"
