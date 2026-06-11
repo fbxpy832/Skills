@@ -16,8 +16,37 @@ CONFIG_DIR="${DEEP_RESEARCH_SKILL_CONFIG_DIR:-$HOME/.config/deep-research-skill}
 CONFIG_ENV="$CONFIG_DIR/config.env"
 PROVIDERS_FILE="$CONFIG_DIR/providers.env"
 
+# ─── 跨平台检测库 ────────────────────────────────────────────────────
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/platform.sh"
+DETECTED_OS="$(dr_detect_os)"
+PYTHON_BIN="$(dr_detect_python || true)"
+
 mkdir -p "$CONFIG_DIR"
 umask 077
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  echo "Usage: bash scripts/setup.sh"
+  echo ""
+  echo "Interactive installer for Deep Research Skill."
+  echo "It configures agent model routes, knowledge paths, output directory, and at least one search API key."
+  exit 0
+fi
+
+if [ ! -t 0 ]; then
+  cat >&2 <<EOF
+ERROR: setup.sh must run in an interactive terminal.
+
+Claude Desktop / Cowork may execute commands without an input prompt. In that case,
+open Terminal and run:
+
+  cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  bash scripts/setup.sh
+
+Then return to Claude Desktop and retry the research task.
+EOF
+  exit 1
+fi
 
 # ─── 辅助函数 ───────────────────────────────────────────────────────
 
@@ -83,6 +112,12 @@ echo ""
 HOST_TYPE=""
 HOST_NAME=""
 OPENCODE_PROVIDERS=()
+OPUS_MODEL_ID="${OPUS_MODEL_ID:-claude-opus-4-6}"
+SONNET_MODEL_ID="${SONNET_MODEL_ID:-claude-sonnet-4-6}"
+HAIKU_MODEL_ID="${HAIKU_MODEL_ID:-claude-haiku-4-5}"
+OPUS_NAME="${OPUS_NAME:-$OPUS_MODEL_ID}"
+SONNET_NAME="${SONNET_NAME:-$SONNET_MODEL_ID}"
+HAIKU_NAME="${HAIKU_NAME:-$HAIKU_MODEL_ID}"
 
 # --- 检测 Claude Code ---
 if [ -f "$HOME/.claude/settings.json" ]; then
@@ -92,7 +127,8 @@ if [ -f "$HOME/.claude/settings.json" ]; then
 
   # 读取模型信息：env 自定义变量 > modelOverrides > 标准模型名
   CC_SETTINGS="$HOME/.claude/settings.json"
-  eval "$(python3 -c "
+  if [ -n "$PYTHON_BIN" ]; then
+    eval "$(dr_python_exec "$PYTHON_BIN" -c "
 import json, re, sys
 
 s = json.load(open(sys.argv[1]))
@@ -118,6 +154,7 @@ print(f'OPUS_NAME={oname}')
 print(f'SONNET_NAME={sname}')
 print(f'HAIKU_NAME={hname}')
 " "$CC_SETTINGS" 2>/dev/null)"
+  fi
 
   # 确保空值时补默认值
   [ -z "$OPUS_MODEL_ID" ] && OPUS_MODEL_ID="claude-opus-4-6"
@@ -134,9 +171,64 @@ print(f'HAIKU_NAME={hname}')
   echo ""
 fi
 
+# --- 检测 Claude Desktop / Cowork ---
+CLAUDE_DESKTOP_CONFIG="$(dr_claude_desktop_config_path "$DETECTED_OS" 2>/dev/null || echo "")"
+if [ -n "$CLAUDE_DESKTOP_CONFIG" ] && [ -f "$CLAUDE_DESKTOP_CONFIG" ] && [ -z "$HOST_TYPE" ]; then
+  echo "[检测] ✅ Claude Desktop 配置已发现"
+  HOST_TYPE="claude-desktop"
+  HOST_NAME="Claude Desktop / Cowork"
+  echo "  注意：Claude Desktop / Cowork 无法由脚本自动验证真实模型切换。"
+  echo "  将写入 opus/sonnet/haiku 作为指令级模型路由建议。"
+  echo ""
+fi
+
+# --- 检测 WorkBuddy (macOS / Windows Git Bash) ---
+if [ "$DETECTED_OS" = "darwin" ] || [ "$DETECTED_OS" = "windows-gitbash" ]; then
+  WB_FOUND=0
+  WB_SETTINGS_PATH=""
+  while IFS= read -r wb_path; do
+    [ -z "$wb_path" ] && continue
+    if [ -f "$wb_path" ]; then
+      WB_FOUND=1
+      WB_SETTINGS_PATH="$wb_path"
+      echo "[检测] ✅ WorkBuddy 桌面配置已发现: $wb_path"
+      break
+    fi
+  done < <(dr_workbuddy_settings_paths "$DETECTED_OS" 2>/dev/null || true)
+
+  if [ "$WB_FOUND" = "1" ]; then
+    WB_WORKSPACE="$(dr_workbuddy_workspace_dir "$DETECTED_OS" 2>/dev/null || true)"
+    if [ -n "$WB_WORKSPACE" ]; then
+      echo "  沙箱工作目录: $WB_WORKSPACE"
+    fi
+
+    # Windows Git Bash: WorkBuddy 优先
+    if [ "$DETECTED_OS" = "windows-gitbash" ] && [ -z "$HOST_TYPE" ]; then
+      HOST_TYPE="workbuddy"
+      HOST_NAME="WorkBuddy (CodeBuddy Desktop)"
+      echo "  Windows 平台检测到 WorkBuddy，设为默认宿主。"
+    elif [ "$DETECTED_OS" = "darwin" ] && [ -z "$HOST_TYPE" ]; then
+      # macOS: WorkBuddy 作为后备（Claude Code 优先）
+      HOST_TYPE="workbuddy"
+      HOST_NAME="WorkBuddy (CodeBuddy Desktop)"
+    fi
+
+    # 检查命名冲突
+    WB_SKILLS_DIR="$(dr_workbuddy_skills_dir "$DETECTED_OS" 2>/dev/null || true)"
+    if [ -n "$WB_SKILLS_DIR" ] && [ -d "$WB_SKILLS_DIR/deep-research" ]; then
+      echo "  ⚠️ 注意: workbuddy 生态已有同名的 deep-research skill，可能与本 skill 触发歧义"
+    fi
+
+    echo "  注意: WorkBuddy 模式采用指令级路由。实际模型由 WorkBuddy gateway 调度。"
+    echo ""
+  fi
+fi
+
 # --- 检测 OpenCode ---
 if [ -f "$HOME/.config/opencode/opencode.json" ]; then
-  OPENCODE_PROVIDER_LIST=$(python3 -c "
+  OPENCODE_PROVIDER_LIST=""
+  if [ -n "$PYTHON_BIN" ]; then
+    OPENCODE_PROVIDER_LIST="$(dr_python_exec "$PYTHON_BIN" -c "
 import json
 c = json.load(open('$HOME/.config/opencode/opencode.json'))
 providers = c.get('provider', {})
@@ -144,7 +236,8 @@ for pid, pconf in providers.items():
     models = list(pconf.get('models', {}).keys())
     if models:
         print(f'{pid}:{\",\".join(models)}')
-" 2>/dev/null || echo "")
+" 2>/dev/null || echo "")"
+  fi
 
   if [ -n "$OPENCODE_PROVIDER_LIST" ]; then
     echo "[检测] ✅ OpenCode 配置已发现"
@@ -183,12 +276,17 @@ echo ""
 PROVIDER_ID=""
 PROVIDER_NAME=""
 
-if [ "$HOST_TYPE" = "claude-code" ]; then
+if [ "$HOST_TYPE" = "claude-code" ] || [ "$HOST_TYPE" = "claude-desktop" ]; then
   # ─── Claude Code 模式 ───────────────────────────────────────────────
-  PROVIDER_ID="claude-code"
-  PROVIDER_NAME="Claude Code"
+  if [ "$HOST_TYPE" = "claude-desktop" ]; then
+    PROVIDER_ID="claude-desktop"
+    PROVIDER_NAME="Claude Desktop / Cowork"
+  else
+    PROVIDER_ID="claude-code"
+    PROVIDER_NAME="Claude Code"
+  fi
 
-  echo "根据 Claude Code 配置，推荐以下 Agent 模型分配："
+  echo "根据 $PROVIDER_NAME 配置，推荐以下 Agent 模型分配："
   echo ""
 
   # 角色 → tier 映射说明
@@ -219,7 +317,7 @@ if [ "$HOST_TYPE" = "claude-code" ]; then
     echo ""
     echo "进入手动分配模式："
     echo ""
-    echo "可用模型 tier（在 Claude Code 中通过 model=opus/sonnet/haiku 选择）："
+    echo "可用模型 tier（在宿主中通过 opus/sonnet/haiku 作为路由建议）："
     echo "  1) opus   → $OPUS_MODEL_ID (Pro/推理)"
     echo "  2) sonnet → $SONNET_MODEL_ID (Flash/初稿)"
     echo "  3) haiku  → $HAIKU_MODEL_ID (长文本/轻量)"
@@ -275,12 +373,15 @@ elif [ "$HOST_TYPE" = "opencode" ] || [ ${#OPENCODE_PROVIDERS[@]} -gt 0 ]; then
   echo ""
 
   # 读取模型列表
-  all_models_str=$(python3 -c "
+  all_models_str=""
+  if [ -n "$PYTHON_BIN" ]; then
+    all_models_str="$(dr_python_exec "$PYTHON_BIN" -c "
 import json
 c = json.load(open('$HOME/.config/opencode/opencode.json'))
 models = list(c.get('provider', {}).get('$selected_provider', {}).get('models', {}).keys())
 print(' '.join(models))
-" 2>/dev/null || echo "")
+" 2>/dev/null || echo "")"
+  fi
   all_models=($all_models_str)
 
   echo "为 $selected_provider 的模型分配角色："
@@ -302,6 +403,54 @@ print(' '.join(models))
     esac
     declare "MANUAL_${agent}=$PROVIDER_ID/$model_id"
   done
+
+elif [ "$HOST_TYPE" = "workbuddy" ]; then
+  # ─── WorkBuddy 模式 ──────────────────────────────────────────────
+  PROVIDER_ID="workbuddy"
+  PROVIDER_NAME="WorkBuddy (CodeBuddy Desktop)"
+
+  echo "WorkBuddy 模式采用指令级路由："
+  echo "  workbuddy/opus   → Pro/推理"
+  echo "  workbuddy/sonnet → Flash/初稿"
+  echo "  workbuddy/haiku  → 长文本/轻量"
+  echo ""
+  echo "实际模型由 WorkBuddy gateway 调度，脚本不会自动验证真实后端模型。"
+  echo ""
+
+  printf "  %-25s %-10s %-s\n" "Agent" "角色" "推荐模型"
+  printf "  %-25s %-10s %-s\n" "─────────────────────────" "──────────" "──────────────────────────────"
+  for agent in $ALL_AGENTS; do
+    role="$(role_for_agent "$agent")"
+    case "$role" in
+      pro)  tier_hint="opus   ← workbuddy/opus (Pro/推理)" ;;
+      fast) tier_hint="sonnet ← workbuddy/sonnet (Flash/初稿)" ;;
+      long) tier_hint="haiku  ← workbuddy/haiku (长文本/轻量)" ;;
+    esac
+    printf "  %-25s %-10s %-s\n" "$agent" "($role)" "$tier_hint"
+  done
+  echo ""
+
+  assign_ok="$(prompt_val "应用以上分配？" "Y")"
+  if [[ "$assign_ok" =~ ^[Nn] ]]; then
+    echo ""
+    echo "进入手动分配模式："
+    echo "可用模型 tier: workbuddy/opus | workbuddy/sonnet | workbuddy/haiku"
+    echo ""
+    for agent in $ALL_AGENTS; do
+      role="$(role_for_agent "$agent")"
+      case "$role" in
+        pro)   default_tier="opus" ;;
+        fast)  default_tier="sonnet" ;;
+        long)  default_tier="haiku" ;;
+      esac
+      tier_choice="$(prompt_val "  $agent 使用的模型 tier" "$default_tier")"
+      case "$tier_choice" in
+        opus|sonnet|haiku) ;;
+        *) tier_choice="opus" ;;
+      esac
+      declare "MANUAL_${agent}=$PROVIDER_ID/$tier_choice"
+    done
+  fi
 
 else
   # ─── 无宿主检测 → 手动选择 ─────────────────────────────────────────
@@ -391,8 +540,8 @@ echo "最终 Agent 模型分配确认"
 echo "=========================================="
 echo ""
 
-# 如果是 Claude Code 自动分配模式（没有手动覆盖），直接设置默认值
-if [ "$HOST_TYPE" = "claude-code" ] && [ -z "${MANUAL_planner_agent:+x}" ]; then
+# 如果是 Claude tier 自动分配模式（没有手动覆盖），直接设置默认值
+if { [ "$HOST_TYPE" = "claude-code" ] || [ "$HOST_TYPE" = "claude-desktop" ] || [ "$HOST_TYPE" = "workbuddy" ]; } && [ -z "${MANUAL_planner_agent:+x}" ]; then
   planner_route="$PROVIDER_ID/opus"
   source_route="$PROVIDER_ID/sonnet"
   long_context_route="$PROVIDER_ID/haiku"
@@ -442,7 +591,12 @@ echo "[依赖检查] 知识库搜索所需工具:"
 if command -v rg &>/dev/null; then
   echo "  ✅ rg (ripgrep) — 已安装，用于 Obsidian Vault 全文搜索"
 else
-  echo "  ⚠️ rg (ripgrep) 未安装，Obsidian Vault 搜索将不可用。安装: brew install ripgrep"
+  case "$DETECTED_OS" in
+    darwin) echo "  ⚠️ rg (ripgrep) 未安装，Obsidian Vault 搜索将不可用。安装: brew install ripgrep" ;;
+    linux)  echo "  ⚠️ rg (ripgrep) 未安装，Obsidian Vault 搜索将不可用。安装: apt install ripgrep" ;;
+    windows-gitbash) echo "  ⚠️ rg (ripgrep) 未安装，Obsidian Vault 搜索将不可用。安装: winget install BurntSushi.ripgrep" ;;
+    *) echo "  ⚠️ rg (ripgrep) 未安装，Obsidian Vault 搜索将不可用。" ;;
+  esac
 fi
 if command -v lark-cli &>/dev/null; then
   echo "  ✅ lark-cli — 已安装，飞书知识库搜索可用"
@@ -456,23 +610,21 @@ else
 fi
 echo ""
 
-# Obsidian Vault: auto-detect from obsidian-article-extractor config, then iCloud sync path
+# Obsidian Vault: auto-detect from config or iCloud (macOS only)
 DETECTED_VAULT=""
 if [ -f "$HOME/.config/obsidian-article-extractor/vault-path" ]; then
   DETECTED_VAULT=$(cat "$HOME/.config/obsidian-article-extractor/vault-path" 2>/dev/null || echo "")
 fi
-if [ -z "$DETECTED_VAULT" ]; then
-  # Detect any Obsidian vault synced via iCloud (works for all vault names)
+if [ -z "$DETECTED_VAULT" ] && [ "$DETECTED_OS" = "darwin" ]; then
+  # macOS iCloud 同步的 Obsidian Vault
   ICLOUD_OBSIDIAN="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents"
   if [ -d "$ICLOUD_OBSIDIAN" ]; then
-    # Find the first subdirectory that looks like a vault (has .obsidian/)
     for maybe_vault in "$ICLOUD_OBSIDIAN"/*/; do
       if [ -d "${maybe_vault}.obsidian" ]; then
         DETECTED_VAULT="${maybe_vault%/}"
         break
       fi
     done
-    # Fallback: just use the iCloud Obsidian folder
     if [ -z "$DETECTED_VAULT" ]; then
       for d in "$ICLOUD_OBSIDIAN"/*/; do
         if [ -d "$d" ]; then
@@ -489,7 +641,9 @@ obsidian_vault="$(prompt_val "Obsidian Vault 路径" "${DETECTED_VAULT:-}")"
 # NotebookLM: auto-detect notebook ID from context.json
 DETECTED_NOTEBOOK=""
 if [ -f "$HOME/.notebooklm/context.json" ]; then
-  DETECTED_NOTEBOOK=$(python3 -c "import json; print(json.load(open('$HOME/.notebooklm/context.json')).get('notebook_id',''))" 2>/dev/null || echo "")
+  if [ -n "$PYTHON_BIN" ]; then
+    DETECTED_NOTEBOOK="$(dr_python_exec "$PYTHON_BIN" -c "import json; print(json.load(open('$HOME/.notebooklm/context.json')).get('notebook_id',''))" 2>/dev/null || echo "")"
+  fi
 fi
 echo "  NotebookLM Notebook ID 用于查询 AI 分析笔记。留空自动检测。"
 notebooklm_id="$(prompt_val "NotebookLM Notebook ID" "${DETECTED_NOTEBOOK:-auto}")"
@@ -519,8 +673,8 @@ echo ""
 # Search tool availability check
 echo "[依赖检查] 搜索所需工具:"
 if command -v curl &>/dev/null; then echo "  ✅ curl — 已安装"; else echo "  ❌ curl 未安装，搜索 API 无法调用"; fi
-if command -v python3 &>/dev/null; then echo "  ✅ python3 — 已安装"; else echo "  ❌ python3 未安装，搜索结果解析不可用"; fi
-if command -v md5 &>/dev/null; then echo "  ✅ md5 — 已安装"; else echo "  ⚪ md5 未安装，缓存 key 生成降级"; fi
+if [ -n "$PYTHON_BIN" ]; then echo "  ✅ $PYTHON_BIN — 已安装"; else echo "  ❌ python 未安装，搜索结果解析不可用"; fi
+if command -v md5 &>/dev/null || command -v md5sum &>/dev/null; then echo "  ✅ md5/md5sum — 已安装"; else echo "  ⚪ md5 未安装，缓存 key 生成降级"; fi
 echo ""
 
 brave_key="$(prompt_secret "BRAVE_API_KEY")"
@@ -558,21 +712,54 @@ HAIKU_DESC="${HAIKU_MODEL_ID:-}"
   echo "export DEEP_RESEARCH_OUTPUT_DIR=$(shell_quote "$output_dir")"
   echo ""
 
-  if [ "$HOST_TYPE" = "claude-code" ]; then
-  echo "# ─── Provider: Claude Code ────────────────────────────────────"
-  echo "# Agent model routing configured for Claude Code."
+  if [ -n "$PROVIDER_ID" ]; then
+  provider_var="$(var_name "$PROVIDER_ID")"
+  if [ "$HOST_TYPE" = "claude-code" ] || [ "$HOST_TYPE" = "claude-desktop" ]; then
+  echo "# ─── Provider: $PROVIDER_NAME ────────────────────────────────────"
+  echo "# Agent model routing configured for $PROVIDER_NAME."
   echo "#   opus   → $OPUS_DESC (Pro/推理)"
   echo "#   sonnet → $SONNET_DESC (Flash/初稿)"
   echo "#   haiku  → $HAIKU_DESC (长文本/轻量)"
-  echo "# Subagents are spawned via Claude Code's Agent tool with model=opus|sonnet|haiku."
-  echo "export DEEP_RESEARCH_PROVIDER_IDS=claude-code"
-  echo "export DEEP_RESEARCH_PROVIDER_CLAUDE_CODE_ID=claude-code"
-  echo "export DEEP_RESEARCH_PROVIDER_CLAUDE_CODE_NAME=Claude Code"
-  echo "export DEEP_RESEARCH_PROVIDER_CLAUDE_CODE_OPUS_MODEL=$(shell_quote "$OPUS_DESC")"
-  echo "export DEEP_RESEARCH_PROVIDER_CLAUDE_CODE_SONNET_MODEL=$(shell_quote "$SONNET_DESC")"
-  echo "export DEEP_RESEARCH_PROVIDER_CLAUDE_CODE_HAIKU_MODEL=$(shell_quote "$HAIKU_DESC")"
+  if [ "$HOST_TYPE" = "claude-desktop" ]; then
+    echo "# Claude Desktop / Cowork treats these routes as instruction-level recommendations."
+    echo "# Actual model use must be reported as not_verified unless the host UI/logs verify it."
+  else
+    echo "# Subagents are spawned via Claude Code's Agent tool with model=opus|sonnet|haiku."
+  fi
+  echo "export DEEP_RESEARCH_PROVIDER_IDS=$(shell_quote "$PROVIDER_ID")"
+  echo "export DEEP_RESEARCH_PROVIDER_${provider_var}_ID=$(shell_quote "$PROVIDER_ID")"
+  echo "export DEEP_RESEARCH_PROVIDER_${provider_var}_NAME=$(shell_quote "$PROVIDER_NAME")"
+  echo "export DEEP_RESEARCH_PROVIDER_${provider_var}_OPUS_MODEL=$(shell_quote "$OPUS_DESC")"
+  echo "export DEEP_RESEARCH_PROVIDER_${provider_var}_SONNET_MODEL=$(shell_quote "$SONNET_DESC")"
+  echo "export DEEP_RESEARCH_PROVIDER_${provider_var}_HAIKU_MODEL=$(shell_quote "$HAIKU_DESC")"
+  echo ""
+  elif [ "$HOST_TYPE" = "workbuddy" ]; then
+  echo "# ─── Provider: WorkBuddy (CodeBuddy Desktop) ──────────────────"
+  echo "# Instruction-level route tiers. Actual model dispatch is"
+  echo "# handled by WorkBuddy gateway — not automatically verified."
+  echo "export DEEP_RESEARCH_PROVIDER_IDS=workbuddy"
+  echo "export DEEP_RESEARCH_PROVIDER_WORKBUDDY_ID=workbuddy"
+  echo "export DEEP_RESEARCH_PROVIDER_WORKBUDDY_NAME=\"WorkBuddy (CodeBuddy Desktop)\""
+  echo "export DEEP_RESEARCH_PROVIDER_WORKBUDDY_OPUS_MODEL=opus"
+  echo "export DEEP_RESEARCH_PROVIDER_WORKBUDDY_SONNET_MODEL=sonnet"
+  echo "export DEEP_RESEARCH_PROVIDER_WORKBUDDY_HAIKU_MODEL=haiku"
+  echo ""
+  else
+  # Manual / other provider mode: write provider identity without model tier mapping
+  echo "# ─── Provider: $PROVIDER_NAME (manual) ────────────────────────────"
+  echo "export DEEP_RESEARCH_PROVIDER_IDS=$(shell_quote "$PROVIDER_ID")"
+  echo "export DEEP_RESEARCH_PROVIDER_${provider_var}_ID=$(shell_quote "$PROVIDER_ID")"
+  echo "export DEEP_RESEARCH_PROVIDER_${provider_var}_NAME=$(shell_quote "$PROVIDER_NAME")"
   echo ""
   fi
+  fi
+
+  echo "# ─── Platform ────────────────────────────────────────────────"
+  echo "export DEEP_RESEARCH_PLATFORM_OS=$DETECTED_OS"
+  if [ -n "${WB_WORKSPACE:-}" ]; then
+    echo "export DEEP_RESEARCH_WORKBUDDY_WORKSPACE_DIR=$(shell_quote "$WB_WORKSPACE")"
+  fi
+  echo ""
 
   echo "# ─── Agent Model Routing ──────────────────────────────────────"
   echo "export DEEP_RESEARCH_MODEL_PLANNER_AGENT=$(shell_quote "$planner_route")"
@@ -614,7 +801,7 @@ HAIKU_DESC="${HAIKU_MODEL_ID:-}"
   fi
 } > "$CONFIG_ENV"
 
-chmod 600 "$CONFIG_ENV"
+dr_chmod_safe 600 "$CONFIG_ENV"
 
 echo ""
 echo "=========================================="
@@ -628,7 +815,11 @@ echo "  在当前 shell 会话中激活配置（每次打开新终端都需要�
 echo "    source $CONFIG_ENV"
 echo ""
 echo "  或永久加载（根据你的 shell 类型）："
-echo "  bash/zsh:  echo 'source $CONFIG_ENV' >> ~/.zshrc"
+SHELL_RC="$(dr_shell_rc_path "$DETECTED_OS" 2>/dev/null || echo "")"
+if [ -n "$SHELL_RC" ]; then
+  echo "    echo 'source $CONFIG_ENV' >> $SHELL_RC"
+fi
+echo "  Windows Git Bash:  echo 'source $CONFIG_ENV' >> ~/.bashrc"
 echo ""
 echo "  确保已配置的搜索 API Key (BRAVE_API_KEY / BOCHA_API_KEY / EXA_API_KEY)"
 echo "  可通过 source 配置文件或直接 export 到环境变量。"

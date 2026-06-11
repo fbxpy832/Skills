@@ -13,16 +13,45 @@
 
 ## 快速开始
 
+### macOS / Linux
+
 ```bash
 # 1. 运行配置
-scripts/setup.sh
+bash setup-config.sh
 
-# 2. 运行研究（通用模式）
+# 2. 验证配置（Claude Desktop / Cowork 也使用这个检查）
+cd ~/.claude/skills/deep-research-skill-beta
+bash scripts/check-config.sh
+
+# 3. 运行研究（通用模式）
 scripts/generic-research-runner.sh high_quality task.md ./output
 
-# 3. 直接搜索测试
+# 4. 直接搜索测试
 scripts/search.sh "研究关键词" --parallel
 ```
+
+### Windows Git Bash + WorkBuddy
+
+```bash
+# 1. 在 Git Bash 中运行配置（脚本会自动检测 WorkBuddy）
+bash setup-config.sh
+
+# 2. 验证配置
+bash scripts/check-config.sh
+```
+
+> WorkBuddy 模式采用指令级路由，实际模型由 WorkBuddy gateway 调度，详见 [SKILL.md](SKILL.md)。
+
+## Claude Desktop / Cowork 安装注意
+
+Cowork 沙箱不保证能看到宿主机的 `~/.config`。安装脚本会把本机私有 `config.env` 同步到 skill 目录：
+
+- `~/.config/deep-research-skill/config.env`
+- `~/.claude/skills/deep-research-skill-beta/config.env`
+
+`config.env` 含 API key，只能在员工本机生成和保存，不要提交到 Git 或打进公共分发包。
+
+如果 `DEEP_RESEARCH_OUTPUT_DIR` 指向宿主机的 iCloud、Obsidian 或其他 Cowork 沙箱不可见目录，Skill 会在最终保存时报告 `final_output_dir_status=fallback`，并把报告保存到本次运行目录的 `final/`。只有看到 `final_report_path=...` 且文件存在，才算真正完成保存。
 
 ## 文档
 
