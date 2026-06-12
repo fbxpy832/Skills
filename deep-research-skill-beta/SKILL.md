@@ -127,7 +127,7 @@ bash scripts/check-config.sh
 - **bash 3.2+**（macOS 自带；Windows 需要 [Git for Windows](https://gitforwindows.org/)，自带 bash 5.2+）
 - **python3** 或 **py -3**（Windows 需安装 [Python Launcher](https://www.python.org/downloads/windows/)，脚本自动检测 `py -3`）
 - **curl**（用于搜索 API 调用；Git for Windows 自带，macOS/Linux 自带）
-- 至少一个搜索 API Key（通过 setup.sh 配置）：Brave / Bocha / Exa
+- 至少一个搜索 API Key（通过 setup.sh 配置）：百度智能云 / Brave / Bocha / Exa
 - 可选工具：
   - **ripgrep** — Obsidian Vault 全文搜索。macOS: `brew install ripgrep` / Linux: `apt install ripgrep` / Windows: `winget install BurntSushi.ripgrep`
   - **lark-cli** — 用于飞书知识库搜索
@@ -143,7 +143,7 @@ bash scripts/check-config.sh
 - **OpenCode**：`/opencode-deep-research 研究主题描述`
 - **通用模式**：`HOST_RUN_CMD` 已配置时才可用 `scripts/generic-research-runner.sh high_quality task.md` 执行 live agent；未配置时只是 dry-run。
 
-配置项包括：各 agent 模型来源、搜索 API key（Brave/Bocha/Exa）、知识库路径（Obsidian Vault / NotebookLM）、输出目录。
+配置项包括：各 agent 模型来源、搜索 API key（百度智能云 / Brave / Bocha / Exa）、知识库路径（Obsidian Vault / NotebookLM）、输出目录。
 安装后还需将 `scripts/` 目录添加到 $PATH 或使用绝对路径调用 search.sh、model-router.sh 等脚本。
 激活配置：`source ~/.config/deep-research-skill/config.env`
 Claude Desktop / Cowork 中必须优先以 `bash scripts/check-config.sh` 验证配置可见性；如果该脚本返回 `status=ok`，即使沙箱内 `~/.config` 不可见，也应继续执行研究。

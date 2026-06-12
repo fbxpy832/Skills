@@ -27,6 +27,7 @@ keys_count=0
 [ -n "${BOCHA_API_KEY:-}" ] && keys_count=$((keys_count + 1))
 [ -n "${BRAVE_API_KEY:-}" ] && keys_count=$((keys_count + 1))
 [ -n "${EXA_API_KEY:-}" ] && keys_count=$((keys_count + 1))
+[ -n "${BAIDU_API_KEY:-}" ] && [ -n "${BAIDU_SECRET_KEY:-}" ] && keys_count=$((keys_count + 1))
 
 models_count=0
 for var in \
@@ -48,6 +49,9 @@ echo "config_exists=$config_exists"
 echo "search_keys_configured=$keys_count"
 echo "agent_models_configured=$models_count"
 echo "platform_os=$DETECTED_OS"
+baidu_configured="no"
+[ -n "${BAIDU_API_KEY:-}" ] && [ -n "${BAIDU_SECRET_KEY:-}" ] && baidu_configured="yes"
+echo "baidu_configured=$baidu_configured"
 if [ -n "$PYTHON_BIN" ]; then
   echo "python_available=yes"
   echo "python_command=$PYTHON_BIN"

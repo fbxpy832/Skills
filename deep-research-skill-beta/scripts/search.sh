@@ -32,12 +32,9 @@ set -euo pipefail
 # ─── 配置 ────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CONFIG_ENV="${DEEP_RESEARCH_CONFIG_ENV:-${DEEP_RESEARCH_SKILL_CONFIG_DIR:-$HOME/.config/deep-research-skill}/config.env}"
-
-if [ -f "$CONFIG_ENV" ]; then
-  # shellcheck disable=SC1090
-  source "$CONFIG_ENV"
-fi
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/config-resolver.sh"
+deep_research_source_config || true
 
 # 代理配置（统一使用 7890 端口，与 runner 保持一致）
 PROXY_PORT="${DEEP_RESEARCH_PROXY_PORT:-7890}"
@@ -64,6 +61,12 @@ BOCHA_API_URL="https://api.bochaai.com/v1/web-search"
 # Exa API
 EXA_API_KEY="${EXA_API_KEY:-}"
 EXA_API_URL="https://api.exa.ai/search"
+
+# 百度智能云搜索（OAuth2）
+BAIDU_API_KEY="${BAIDU_API_KEY:-}"
+BAIDU_SECRET_KEY="${BAIDU_SECRET_KEY:-}"
+BAIDU_TOKEN_URL="https://aip.baidubce.com/oauth/2.0/token"
+BAIDU_API_URL="https://aip.baidubce.com/rpc/2.0/solution/v1/websearch/search"
 
 # 自动从配置文件加载 API Key
 if [ -f "$HOME/.bocha-config" ]; then
@@ -98,7 +101,7 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: search.sh QUERY [OPTIONS]"
       echo ""
       echo "Options:"
-      echo "  --backend bocha|brave|exa|auto  搜索后端（默认 auto）"
+      echo "  --backend baidu|bocha|brave|exa|auto  搜索后端（默认 auto）"
       echo "  --parallel                    多引擎并发搜索"
       echo "  --lang zh|en|auto           查询语言（默认 auto）"
       echo "  --count N                   返回结果数（默认 8）"
@@ -149,6 +152,10 @@ try:
         inner = data.get('data') or {}
         bwp = inner.get('webPages') or {}
         if bwp.get('value'):
+            sys.exit(0)
+        # Baidu: result.items is non-empty
+        baidu_result = data.get('result') or {}
+        if baidu_result.get('items'):
             sys.exit(0)
         # Exa: results list is non-empty
         if data.get('results'):
@@ -391,6 +398,75 @@ print(json.dumps({
     "$EXA_API_URL"
 }
 
+search_baidu() {
+  local query="$1"
+  local count="${2:-$DEFAULT_COUNT}"
+
+  if [ -z "$BAIDU_API_KEY" ] || [ -z "$BAIDU_SECRET_KEY" ]; then
+    echo "ERROR: BAIDU_API_KEY and BAIDU_SECRET_KEY must both be set." >&2
+    return 1
+  fi
+
+  # ─── Get / refresh OAuth2 access token ──────────────────────────────
+  local token_file="$CACHE_DIR/baidu_token.json"
+  local access_token=""
+  local now
+  now="$(date +%s 2>/dev/null || echo "0")"
+
+  if [ -f "$token_file" ] && [ "$now" -gt "0" ]; then
+    local cached_expires
+    cached_expires="$(python3 -c "import json; print(json.load(open('$token_file')).get('expires_at',0))" 2>/dev/null || echo "0")"
+    if [ "$cached_expires" -gt "$now" ]; then
+      access_token="$(python3 -c "import json; print(json.load(open('$token_file'))['access_token'])" 2>/dev/null || true)"
+    fi
+  fi
+
+  if [ -z "$access_token" ]; then
+    local token_resp
+    token_resp=$(curl -s --connect-timeout "$TIMEOUT" \
+      "${BAIDU_TOKEN_URL}?grant_type=client_credentials&client_id=${BAIDU_API_KEY}&client_secret=${BAIDU_SECRET_KEY}" \
+      -d "")
+
+    local token_error
+    token_error="$(echo "$token_resp" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('error_description',''))" 2>/dev/null || echo "parse_failed")"
+    if [ -n "$token_error" ] && [ "$token_error" != "parse_failed" ]; then
+      echo "ERROR: Baidu OAuth2 failed: $token_error" >&2
+      return 1
+    fi
+
+    access_token="$(echo "$token_resp" | python3 -c "
+import json, sys, time
+d = json.load(sys.stdin)
+d['expires_at'] = int(time.time()) + d.get('expires_in', 2592000) - 300
+with open('$token_file', 'w') as f:
+    json.dump(d, f)
+print(d['access_token'])
+" 2>/dev/null || true)"
+
+    if [ -z "$access_token" ]; then
+      echo "ERROR: Failed to parse Baidu OAuth2 token response" >&2
+      return 1
+    fi
+    chmod 600 "$token_file" 2>/dev/null || true
+  fi
+
+  # ─── Search ─────────────────────────────────────────────────────────
+  local payload
+  payload=$(python3 -c "
+import json, sys
+q = sys.stdin.read().strip()
+print(json.dumps({
+    'query': q,
+    'num': $count
+}))
+" <<< "$query")
+
+  curl -s --connect-timeout "$TIMEOUT" \
+    -H "Content-Type: application/json" \
+    -d "$payload" \
+    "${BAIDU_API_URL}?access_token=${access_token}"
+}
+
 # ─── 结果格式化 ──────────────────────────────────────────────────
 
 format_brave_results() {
@@ -472,6 +548,26 @@ for p in pages:
 "
 }
 
+format_baidu_results() {
+  python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+result = data.get('result', {})
+items = result.get('items', [])
+if not items:
+    print('search_status=no_results')
+    sys.exit(1)
+for item in items:
+    title = item.get('title', '')
+    url = item.get('url', '') or item.get('link', '')
+    desc = (item.get('desc') or item.get('snippet') or '')[:200]
+    print(f'[zh] {title}')
+    print(f'  {url}')
+    print(f'  {desc}')
+    print()
+"
+}
+
 # ─── 路由逻辑 ────────────────────────────────────────────────────
 
 resolve_backend() {
@@ -484,16 +580,18 @@ resolve_backend() {
   fi
 
   if [ "$detected_lang" = "zh" ]; then
-    if [ -n "$BOCHA_API_KEY" ]; then
+    if [ -n "$BAIDU_API_KEY" ] && [ -n "$BAIDU_SECRET_KEY" ]; then
+      echo "baidu"
+    elif [ -n "$BOCHA_API_KEY" ]; then
       echo "bocha"
     elif [ -n "$BRAVE_API_KEY" ]; then
       echo "brave"
     elif [ -n "$EXA_API_KEY" ]; then
-      echo "WARNING: Chinese query detected but BOCHA_API_KEY and BRAVE_API_KEY are not set. Falling back to Exa." >&2
+      echo "WARNING: Chinese query detected but BAIDU/BOCHA/BRAVE keys are not set. Falling back to Exa." >&2
       echo "exa"
     else
-      echo "WARNING: No search API keys configured. Defaulting to bocha so the missing key error is explicit." >&2
-      echo "bocha"
+      echo "WARNING: No search API keys configured for Chinese. Defaulting to baidu." >&2
+      echo "baidu"
     fi
   else
     if [ -n "$EXA_API_KEY" ]; then
@@ -515,6 +613,7 @@ resolve_backend() {
 # API Key 可用性检查（跳过 help / dry-run / 单个后端检查）
 api_key_check_ok() {
   [ "$DRY_RUN" = true ] && return 0
+  [ -n "${BAIDU_API_KEY:-}" ] && [ -n "${BAIDU_SECRET_KEY:-}" ] && return 0
   [ -n "${BRAVE_API_KEY:-}" ] && return 0
   [ -n "${BOCHA_API_KEY:-}" ] && return 0
   [ -n "${EXA_API_KEY:-}" ] && return 0
@@ -523,8 +622,8 @@ api_key_check_ok() {
 
 if ! api_key_check_ok; then
   echo "ERROR: 至少需要配置一个搜索 API Key 才能联网搜索。" >&2
-  echo "  请运行 scripts/setup.sh 配置 Bocha / Brave / Exa API Key。" >&2
-  echo "  或在环境变量中设置 BRAVE_API_KEY / BOCHA_API_KEY / EXA_API_KEY。" >&2
+  echo "  请运行 scripts/setup.sh 配置 百度智能云 / Bocha / Brave / Exa API Key。" >&2
+  echo "  或在环境变量中设置 BAIDU_API_KEY+BAIDU_SECRET_KEY / BRAVE_API_KEY / BOCHA_API_KEY / EXA_API_KEY。" >&2
   exit 1
 fi
 
@@ -570,8 +669,8 @@ search_parallel() {
   local primary secondary
 
   if [ "$detected_lang" = "zh" ]; then
-    primary="bocha"
-    secondary="brave"
+    primary="baidu"
+    secondary="bocha"
   else
     primary="exa"
     secondary="brave"
@@ -583,11 +682,13 @@ search_parallel() {
     bocha) primary_search="search_bocha";  primary_format="format_bocha_results" ;;
     exa)   primary_search="search_exa";    primary_format="format_exa_results" ;;
     brave) primary_search="search_brave";  primary_format="format_brave_results" ;;
+    baidu) primary_search="search_baidu";  primary_format="format_baidu_results" ;;
   esac
   case "$secondary" in
     bocha) secondary_search="search_bocha";  secondary_format="format_bocha_results" ;;
     exa)   secondary_search="search_exa";    secondary_format="format_exa_results" ;;
     brave) secondary_search="search_brave";  secondary_format="format_brave_results" ;;
+    baidu) secondary_search="search_baidu";  secondary_format="format_baidu_results" ;;
   esac
 
   local tmp1 tmp2 pid1 pid2 r1 r2
@@ -816,7 +917,34 @@ search_with_fallback() {
   local result
   local last_error=""
 
-  if [ "$backend" = "bocha" ]; then
+  if [ "$backend" = "baidu" ]; then
+    if result=$(retry "$MAX_RETRIES" search_baidu "$QUERY" "$COUNT"); then
+      echo "$result" | format_baidu_results && return 0
+      echo "WARNING: Baidu returned no results, trying Bocha..." >&2
+      last_error="baidu:no_results"
+    else
+      echo "WARNING: Baidu failed, trying Bocha..." >&2
+      last_error="baidu:api_failed"
+    fi
+    if [ -n "$BOCHA_API_KEY" ]; then
+      if result=$(retry "$MAX_RETRIES" search_bocha "$QUERY" "$COUNT"); then
+        echo "$result" | format_bocha_results && return 0
+        echo "WARNING: Bocha also returned no results after Baidu failure." >&2
+        last_error="${last_error}:bocha:no_results"
+      else
+        last_error="${last_error}:bocha:api_failed"
+      fi
+    fi
+    if [ -n "$BRAVE_API_KEY" ]; then
+      if result=$(retry "$MAX_RETRIES" search_brave "$QUERY" "$COUNT" "zh"); then
+        echo "$result" | format_brave_results && return 0
+        last_error="${last_error}:brave:no_results"
+      else
+        last_error="${last_error}:brave:api_failed"
+      fi
+    fi
+
+  elif [ "$backend" = "bocha" ]; then
     if result=$(retry "$MAX_RETRIES" search_bocha "$QUERY" "$COUNT"); then
       echo "$result" | format_bocha_results && return 0
       # No results — fall through to Brave
@@ -900,8 +1028,53 @@ search_sequential() {
   local attempted=""
   local failure_detail=""
 
+  # ── Primary: baidu ──────────────────────────────────────────
+  if [ "$backend" = "baidu" ]; then
+    attempted="baidu"
+    if result=$(retry "$MAX_RETRIES" search_baidu "$QUERY" "$COUNT"); then
+      if echo "$result" | format_baidu_results > /dev/null 2>&1; then
+        search_ok=true
+      else
+        echo "WARNING: Baidu returned no results, falling back to Bocha..." >&2
+        failure_detail="baidu:no_results"
+      fi
+    else
+      echo "WARNING: Baidu search failed, falling back to Bocha..." >&2
+      failure_detail="baidu:api_failed"
+    fi
+
+    # Fallback: Bocha
+    if [ "$search_ok" != true ] && [ -n "$BOCHA_API_KEY" ]; then
+      attempted="${attempted}:bocha"
+      if result=$(retry "$MAX_RETRIES" search_bocha "$QUERY" "$COUNT"); then
+        if echo "$result" | format_bocha_results > /dev/null 2>&1; then
+          final_backend="bocha"
+          search_ok=true
+        else
+          failure_detail="${failure_detail}:bocha:no_results"
+        fi
+      else
+        failure_detail="${failure_detail}:bocha:api_failed"
+      fi
+    fi
+
+    # Fallback: Brave
+    if [ "$search_ok" != true ] && [ -n "$BRAVE_API_KEY" ]; then
+      attempted="${attempted}:brave"
+      if result=$(retry "$MAX_RETRIES" search_brave "$QUERY" "$COUNT" "$search_lang"); then
+        if echo "$result" | format_brave_results > /dev/null 2>&1; then
+          final_backend="brave"
+          search_ok=true
+        else
+          failure_detail="${failure_detail}:brave:no_results"
+        fi
+      else
+        failure_detail="${failure_detail}:brave:api_failed"
+      fi
+    fi
+
   # ── Primary: bocha ──────────────────────────────────────────
-  if [ "$backend" = "bocha" ]; then
+  elif [ "$backend" = "bocha" ]; then
     attempted="bocha"
     if result=$(retry "$MAX_RETRIES" search_bocha "$QUERY" "$COUNT"); then
       if echo "$result" | format_bocha_results > /dev/null 2>&1; then
@@ -1058,6 +1231,8 @@ search_sequential() {
   # Output
   if [ "$RAW_JSON" = true ]; then
     echo "$result"
+  elif [ "$final_backend" = "baidu" ]; then
+    echo "$result" | format_baidu_results
   elif [ "$final_backend" = "bocha" ]; then
     echo "$result" | format_bocha_results
   elif [ "$final_backend" = "exa" ]; then

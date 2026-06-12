@@ -194,6 +194,7 @@ echo "=========================================="
 echo ""
 echo "  至少需要一个搜索 API Key 才能联网搜索。"
 echo "  Bocha (博查) — 中文搜索，国内直连，推荐"
+echo "  百度智能云搜索 — 中文搜索，OAuth2 认证，需 API Key + Secret Key"
 echo "  Brave — 中英文通用，需代理"
 echo "  Exa — 英文语义搜索"
 echo ""
@@ -202,6 +203,8 @@ echo ""
 OLD_BRAVE="${BRAVE_API_KEY:-}"
 OLD_BOCHA="${BOCHA_API_KEY:-}"
 OLD_EXA="${EXA_API_KEY:-}"
+OLD_BAIDU_API_KEY="${BAIDU_API_KEY:-}"
+OLD_BAIDU_SECRET_KEY="${BAIDU_SECRET_KEY:-}"
 
 read -r -s -p "  BOCHA_API_KEY${OLD_BOCHA:+ [已配置]}: " bocha_key
 echo
@@ -215,7 +218,15 @@ read -r -s -p "  EXA_API_KEY${OLD_EXA:+ [已配置]}: " exa_key
 echo
 exa_key="${exa_key:-$OLD_EXA}"
 
-if [ -z "$bocha_key" ] && [ -z "$brave_key" ] && [ -z "$exa_key" ]; then
+read -r -s -p "  BAIDU_API_KEY${OLD_BAIDU_API_KEY:+ [已配置]}: " baidu_api_key
+echo
+baidu_api_key="${baidu_api_key:-$OLD_BAIDU_API_KEY}"
+
+read -r -s -p "  BAIDU_SECRET_KEY${OLD_BAIDU_SECRET_KEY:+ [已配置]}: " baidu_secret_key
+echo
+baidu_secret_key="${baidu_secret_key:-$OLD_BAIDU_SECRET_KEY}"
+
+if [ -z "$bocha_key" ] && [ -z "$brave_key" ] && [ -z "$exa_key" ] && [ -z "$baidu_api_key" ] && [ -z "$baidu_secret_key" ]; then
   warn "未配置任何搜索 API Key，联网搜索将不可用"
 fi
 
@@ -293,6 +304,8 @@ fi
 [ -n "$bocha_key" ] && echo "export BOCHA_API_KEY=$(shell_quote "$bocha_key")" >> "$CONFIG_FILE"
 [ -n "$brave_key" ] && echo "export BRAVE_API_KEY=$(shell_quote "$brave_key")" >> "$CONFIG_FILE"
 [ -n "$exa_key" ] && echo "export EXA_API_KEY=$(shell_quote "$exa_key")" >> "$CONFIG_FILE"
+[ -n "$baidu_api_key" ] && echo "export BAIDU_API_KEY=$(shell_quote "$baidu_api_key")" >> "$CONFIG_FILE"
+[ -n "$baidu_secret_key" ] && echo "export BAIDU_SECRET_KEY=$(shell_quote "$baidu_secret_key")" >> "$CONFIG_FILE"
 
 dr_chmod_safe 600 "$CONFIG_FILE"
 ok "配置已写入: $CONFIG_FILE"
@@ -344,6 +357,7 @@ if [ -f "$CONFIG_FILE" ]; then
   [ -n "${BOCHA_API_KEY:-}" ] && keys_count=$((keys_count + 1))
   [ -n "${BRAVE_API_KEY:-}" ] && keys_count=$((keys_count + 1))
   [ -n "${EXA_API_KEY:-}" ] && keys_count=$((keys_count + 1))
+  [ -n "${BAIDU_API_KEY:-}" ] && [ -n "${BAIDU_SECRET_KEY:-}" ] && keys_count=$((keys_count + 1))
   echo "  搜索 API Keys: $keys_count 个已配置"
   echo "  输出目录: $DEEP_RESEARCH_OUTPUT_DIR"
 else

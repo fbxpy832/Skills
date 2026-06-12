@@ -666,6 +666,7 @@ echo "=========================================="
 echo ""
 echo "说明：至少配置一个搜索 API Key 才能进行联网搜索。"
 echo "  博查 (Bocha) — 中文搜索，国内直连，推荐"
+echo "  百度智能云搜索 — 中文搜索，OAuth2 认证，需 API Key + Secret Key"
 echo "  Brave — 中英文通用，需代理"
 echo "  Exa — 英文语义搜索，直连"
 echo ""
@@ -680,6 +681,8 @@ echo ""
 brave_key="$(prompt_secret "BRAVE_API_KEY")"
 bocha_key="$(prompt_secret "BOCHA_API_KEY")"
 exa_key="$(prompt_secret "EXA_API_KEY")"
+baidu_api_key="$(prompt_secret "BAIDU_API_KEY")"
+baidu_secret_key="$(prompt_secret "BAIDU_SECRET_KEY")"
 
 # ============================================================================
 # Phase 5: 输出目录
@@ -799,6 +802,13 @@ HAIKU_DESC="${HAIKU_MODEL_ID:-}"
     echo "# Exa Search API"
     echo "export EXA_API_KEY=$(shell_quote "$exa_key")"
   fi
+  if [ -n "$baidu_api_key" ]; then
+    echo "# Baidu Intelligent Cloud Search API"
+    echo "export BAIDU_API_KEY=$(shell_quote "$baidu_api_key")"
+  fi
+  if [ -n "$baidu_secret_key" ]; then
+    echo "export BAIDU_SECRET_KEY=$(shell_quote "$baidu_secret_key")"
+  fi
 } > "$CONFIG_ENV"
 
 dr_chmod_safe 600 "$CONFIG_ENV"
@@ -821,6 +831,6 @@ if [ -n "$SHELL_RC" ]; then
 fi
 echo "  Windows Git Bash:  echo 'source $CONFIG_ENV' >> ~/.bashrc"
 echo ""
-echo "  确保已配置的搜索 API Key (BRAVE_API_KEY / BOCHA_API_KEY / EXA_API_KEY)"
+echo "  确保已配置的搜索 API Key (BAIDU_API_KEY+BAIDU_SECRET_KEY / BRAVE_API_KEY / BOCHA_API_KEY / EXA_API_KEY)"
 echo "  可通过 source 配置文件或直接 export 到环境变量。"
 echo ""
