@@ -126,9 +126,8 @@ hermes-dev-skill/
 │   │   └── sandbox-project/              # 50-line throwaway git repo for e2e
 │   └── manual/
 │       └── smoke.sh                      # End-to-end smoke against a real project
-└── docs/superpowers/
-    ├── specs/2026-06-14-hermes-dev-collab-skill-design.md   # This file
-    └── plans/                            # Implementation plan (written by writing-plans)
+└── design-specs/                          # Design specs for this skill
+    └── 2026-06-14-hermes-dev-collab-skill-design.md   # This file
 ```
 
 `hermes-dev` is a single Python CLI with subcommands:
