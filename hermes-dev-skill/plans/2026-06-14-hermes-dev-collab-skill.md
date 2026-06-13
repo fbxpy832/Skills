@@ -142,7 +142,7 @@ description = "Hermes-invocable skill: idea-to-code via Codex and Claude Code"
 requires-python = ">=3.11"
 dependencies = [
     "pyyaml>=6.0",
-    "jsonpatch>=2.0",
+    "jsonpatch>=1.33",
 ]
 
 [project.optional-dependencies]
@@ -629,13 +629,41 @@ def _lock_path(runs_dir: Path) -> Path:
     return Path(runs_dir) / ".state.lock"
 
 
+def _eval_patch_expr(patch_expr: str, current: dict[str, Any]) -> Any:
+    """Evaluate a patch expression in the context of the current state.
+
+    `patch_expr` is a Python expression where `current` refers to the
+    current state dict. It must return either a dict (which is merged
+    into the state via shallow update) or a full state dict (replaced).
+
+    This is internal to hermes-dev and only used with trusted code, not
+    user input. `__builtins__` is cleared in the eval namespace as a
+    defense-in-depth measure.
+    """
+    import textwrap
+    return eval(  # noqa: S307
+        textwrap.dedent(patch_expr),
+        {"__builtins__": {}},
+        {"current": current},
+    )
+
+
 def atomic_update(runs_dir: Path, patch_expr: str) -> None:
     """Atomically read-modify-write state.json.
 
-    `patch_expr` is a JSON-Patch document (RFC 6902) such as
-    `[{"op": "replace", "path": "/phase", "value": "spec_plan"}]` or a
-    shorthand object form like `{"phase": "spec_plan"}` which is converted
-    to add-ops internally.
+    `patch_expr` is a Python expression (NOT a JSON-Patch) that can
+    reference `current` to read the existing state and must return a
+    dict. The returned dict is merged into the state (shallow update).
+
+    Examples:
+        atomic_update(runs_dir, '{"phase": "spec_plan"}')
+        atomic_update(runs_dir, '''
+        {
+          "user_overrides": {
+            "max_review_rounds": current["user_overrides"]["max_review_rounds"] + 5
+          }
+        }
+        ''')
 
     The whole operation is wrapped in a FileLock so concurrent updates
     cannot lose data.
@@ -644,18 +672,12 @@ def atomic_update(runs_dir: Path, patch_expr: str) -> None:
     runs_dir.mkdir(parents=True, exist_ok=True)
     with FileLock(str(_lock_path(runs_dir))):
         current_state = read(runs_dir)
-        # Allow shorthand {"k": "v"} by expanding to JSON-Patch add ops
-        if isinstance(patch_expr, str):
-            patch_obj = json.loads(patch_expr)
-        else:
-            patch_obj = patch_expr
-        if not isinstance(patch_obj, list):
-            # Shorthand: convert {"path": value, ...} to JSON-Patch adds
-            patch_obj = [
-                {"op": "add", "path": "/" + k, "value": v}
-                for k, v in patch_obj.items()
-            ]
-        new_state = jsonpatch.apply_patch(current_state, patch_obj, in_place=False)
+        patch_result = _eval_patch_expr(patch_expr, current_state)
+        if not isinstance(patch_result, dict):
+            raise StateError(
+                f"atomic_update patch_expr must return a dict, got {type(patch_result).__name__}"
+            )
+        new_state = {**current_state, **patch_result}
         validate(new_state)
         write(runs_dir, new_state)
 
@@ -676,7 +698,7 @@ Edit `pyproject.toml` and add `"filelock>=3.12"` to `dependencies`:
 ```toml
 dependencies = [
     "pyyaml>=6.0",
-    "jsonpatch>=2.0",
+    "jsonpatch>=1.33",
     "filelock>=3.12",
 ]
 ```
