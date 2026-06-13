@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -162,3 +163,22 @@ def get(runs_dir: Path, dotted_path: str) -> Any:
     for part in dotted_path.split("."):
         cur = cur[part]
     return cur
+
+
+def retry_with_backoff(fn, max_attempts: int = 3, base: float = 2.0):
+    """Run `fn` (no-arg callable) up to `max_attempts` times.
+
+    Returns the value of the first successful call.
+    Raises the last TransientError if all attempts fail.
+    Non-transient errors propagate immediately without retry.
+    """
+    last_error: TransientError | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return fn()
+        except TransientError as e:
+            last_error = e
+            if attempt < max_attempts:
+                time.sleep(base ** attempt)
+    assert last_error is not None
+    raise last_error

@@ -1,9 +1,13 @@
 # hermes-dev-skill/tests/test_state.py
 import json
+import time
 from pathlib import Path
 import pytest
 
-from scripts.lib.state import read, write, StateError, atomic_update, get
+from scripts.lib.state import (
+    read, write, StateError, atomic_update, get,
+    retry_with_backoff, TransientError,
+)
 
 
 def _write_state(runs_dir: Path, **overrides) -> None:
@@ -158,3 +162,45 @@ def test_atomic_update_non_dict_raises_state_error(tmp_runs_dir):
     })
     with pytest.raises(StateError, match="must return a dict"):
         atomic_update(tmp_runs_dir, "42")  # int, not dict
+
+
+def test_retry_succeeds_on_second_attempt():
+    calls = {"n": 0}
+    def fn():
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise TransientError("network blip")
+        return "ok"
+    assert retry_with_backoff(fn) == "ok"
+    assert calls["n"] == 2
+
+
+def test_retry_raises_after_max_attempts():
+    calls = {"n": 0}
+    def fn():
+        calls["n"] += 1
+        raise TransientError("always fails")
+    with pytest.raises(TransientError):
+        retry_with_backoff(fn, max_attempts=3, base=1.0)
+    assert calls["n"] == 3
+
+
+def test_retry_does_not_catch_non_transient():
+    def fn():
+        raise ValueError("not transient")
+    with pytest.raises(ValueError):
+        retry_with_backoff(fn)
+
+
+def test_retry_backoff_timing(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(time, "sleep", lambda s: sleeps.append(s))
+    calls = {"n": 0}
+    def fn():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise TransientError("x")
+        return "ok"
+    retry_with_backoff(fn, max_attempts=3, base=2.0)
+    # Sleeps should be base^1, base^2 = 2.0, 4.0
+    assert sleeps == [2.0, 4.0]
