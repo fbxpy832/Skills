@@ -13,7 +13,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import jsonpatch
 from filelock import FileLock
 
 
@@ -102,44 +101,42 @@ def _lock_path(runs_dir: Path) -> Path:
     return Path(runs_dir) / ".state.lock"
 
 
-def _eval_patch_expr(patch_expr: str | Any, current: dict[str, Any]) -> Any:
-    """Parse a patch expression.
+def _eval_patch_expr(patch_expr: str, current: dict[str, Any]) -> Any:
+    """Evaluate a patch expression string with `current` bound to the
+    existing state. Valid JSON is also valid Python (modulo null/true/false
+    which the current callers don't use), so callers that pass a pure-JSON
+    string still work. We dedent first so multi-line patches written
+    with Python indentation work too. `__builtins__` is cleared as a
+    defense-in-depth measure since `eval` is otherwise a code-execution
+    sink — callers are internal trusted code.
 
-    `patch_expr` may be:
-      * a string containing a Python expression — `current` is bound to the
-        current state so the expression can reference it (e.g.
-        `'{ "counter": current["counter"] + 1 }'`).
-      * a JSON-Patch list (RFC 6902) such as
-        `[{"op": "replace", "path": "/phase", "value": "spec_plan"}]`.
-      * a shorthand dict like `{"phase": "spec_plan"}` (handled by caller
-        after this returns).
-
-    Returns the evaluated expression result.
+    Returns whatever the expression evaluates to (must be a dict for
+    `atomic_update`).
     """
-    if isinstance(patch_expr, str):
-        # eval rather than json.loads so the expression can reference
-        # `current`. Valid JSON is also valid Python (modulo null/true/false
-        # which the current callers don't use), so callers that pass a
-        # pure-JSON string still work. We dedent first so multi-line
-        # patches written with Python indentation work too.
-        import textwrap
-        return eval(  # noqa: S307 — callers are internal trusted code
-            textwrap.dedent(patch_expr),
-            {"current": current, "__builtins__": {}},
-        )
-    return patch_expr
+    import textwrap
+    return eval(  # noqa: S307 — callers are internal trusted code
+        textwrap.dedent(patch_expr),
+        {"__builtins__": {}},
+        {"current": current},
+    )
 
 
-def atomic_update(runs_dir: Path, patch_expr: str | Any) -> None:
+def atomic_update(runs_dir: Path, patch_expr: str) -> None:
     """Atomically read-modify-write state.json.
 
-    `patch_expr` is either:
-      * a Python expression string with `current` bound to the current
-        state (e.g. `'{ "counter": current["counter"] + 1 }'`)
-      * a JSON-Patch list (RFC 6902) such as
-        `[{"op": "replace", "path": "/phase", "value": "spec_plan"}]`
-      * a shorthand dict like `{"phase": "spec_plan"}` which is converted
-        to add-ops internally.
+    `patch_expr` is a Python expression (NOT a JSON-Patch) that can
+    reference `current` to read the existing state and must return a
+    dict. The returned dict is merged into the state (shallow update).
+
+    Examples:
+        atomic_update(runs_dir, '{"phase": "spec_plan"}')
+        atomic_update(runs_dir, '''
+        {
+          "user_overrides": {
+            "max_review_rounds": current["user_overrides"]["max_review_rounds"] + 5
+          }
+        }
+        ''')
 
     The whole operation is wrapped in a FileLock so concurrent updates
     cannot lose data.
@@ -148,14 +145,12 @@ def atomic_update(runs_dir: Path, patch_expr: str | Any) -> None:
     runs_dir.mkdir(parents=True, exist_ok=True)
     with FileLock(str(_lock_path(runs_dir))):
         current_state = read(runs_dir)
-        patch_obj = _eval_patch_expr(patch_expr, current_state)
-        if not isinstance(patch_obj, list):
-            # Shorthand: convert {"path": value, ...} to JSON-Patch adds
-            patch_obj = [
-                {"op": "add", "path": "/" + k, "value": v}
-                for k, v in patch_obj.items()
-            ]
-        new_state = jsonpatch.apply_patch(current_state, patch_obj, in_place=False)
+        patch_result = _eval_patch_expr(patch_expr, current_state)
+        if not isinstance(patch_result, dict):
+            raise StateError(
+                f"atomic_update patch_expr must return a dict, got {type(patch_result).__name__}"
+            )
+        new_state = {**current_state, **patch_result}
         validate(new_state)
         write(runs_dir, new_state)
 

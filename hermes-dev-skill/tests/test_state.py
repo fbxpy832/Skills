@@ -149,3 +149,12 @@ def test_get_dotted_path(tmp_runs_dir):
     )
     assert get(tmp_runs_dir, "user_overrides.max_review_rounds") == 7
     assert get(tmp_runs_dir, "status") == "running"
+
+
+def test_atomic_update_non_dict_raises_state_error(tmp_runs_dir):
+    """If the patch expression returns a non-dict, StateError is raised, not AttributeError."""
+    write(tmp_runs_dir, {
+        "job_id": "a", "status": "running", "phase": "clarify", "phase_round": 1,
+    })
+    with pytest.raises(StateError, match="must return a dict"):
+        atomic_update(tmp_runs_dir, "42")  # int, not dict
