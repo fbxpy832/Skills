@@ -19,15 +19,17 @@ class StateError(Exception):
 
 
 def read(runs_dir: Path) -> dict[str, Any]:
-    """Load state.json from runs_dir. Raises StateError if missing or unparseable."""
+    """Load state.json from runs_dir. Raises StateError if missing, unparseable, or invalid."""
     path = Path(runs_dir) / "state.json"
     if not path.exists():
         raise StateError(f"state.json not found in {runs_dir}")
     try:
         with path.open("r", encoding="utf-8") as f:
-            return json.load(f)
+            state = json.load(f)
     except json.JSONDecodeError as e:
         raise StateError(f"state.json in {runs_dir} is not valid JSON: {e}") from e
+    validate(state)
+    return state
 
 
 def write(runs_dir: Path, state: dict[str, Any]) -> None:
@@ -52,6 +54,38 @@ def write(runs_dir: Path, state: dict[str, Any]) -> None:
         except FileNotFoundError:
             pass
         raise
+
+
+REQUIRED_KEYS = {"job_id", "status", "phase", "phase_round"}
+ALLOWED_STATUSES = {
+    "running", "awaiting_user", "awaiting_tool", "halted", "orphaned", "done"
+}
+ALLOWED_PHASES = {
+    "bootstrap", "clarify", "spec_plan", "implement", "review", "handoff", "done", "halted"
+}
+
+
+def validate(state: dict[str, Any]) -> None:
+    """Validate state structure. Raises StateError on any problem."""
+    missing = REQUIRED_KEYS - state.keys()
+    if missing:
+        raise StateError(
+            f"state.json missing required keys: {sorted(missing)}"
+        )
+    if state["status"] not in ALLOWED_STATUSES:
+        raise StateError(
+            f"status {state['status']!r} not in allowed values: "
+            f"{sorted(ALLOWED_STATUSES)}"
+        )
+    if state["phase"] not in ALLOWED_PHASES:
+        raise StateError(
+            f"phase {state['phase']!r} not in allowed values: "
+            f"{sorted(ALLOWED_PHASES)}"
+        )
+    if not isinstance(state["phase_round"], int) or state["phase_round"] < 1:
+        raise StateError(
+            f"phase_round must be a positive integer, got {state['phase_round']!r}"
+        )
 
 
 class TransientError(Exception):
