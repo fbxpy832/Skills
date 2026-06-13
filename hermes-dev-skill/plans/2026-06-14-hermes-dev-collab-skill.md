@@ -310,22 +310,24 @@ def test_write_then_read_roundtrip(tmp_runs_dir):
 
 
 def test_write_is_atomic_no_partial_file(tmp_runs_dir, monkeypatch):
-    """If the write is interrupted, the original file (or no file) is preserved."""
+    """If os.replace fails, the original state.json is preserved and the
+    temp file is cleaned up."""
+    import os
     state = {"job_id": "test-001", "status": "running"}
     write(tmp_runs_dir, state)
 
-    # Simulate crash mid-write by raising after rename begins
-    real_rename = Path.rename
-    def boom(self, target):
-        real_rename(self, target)
-        raise OSError("disk full")
-    monkeypatch.setattr(Path, "rename", boom)
+    def boom(*args, **kwargs):
+        raise OSError("disk full mid-rename")
+    monkeypatch.setattr(os, "replace", boom)
 
     with pytest.raises(OSError):
         write(tmp_runs_dir, {"job_id": "test-002"})
 
     # Original must still be readable
     assert read(tmp_runs_dir)["job_id"] == "test-001"
+    # Temp file must be cleaned up
+    leftovers = list(tmp_runs_dir.glob(".state.*.tmp"))
+    assert leftovers == [], f"temp files not cleaned up: {leftovers}"
 ```
 
 - [ ] **Step 2: Run tests; expect failure (module doesn't exist)**
