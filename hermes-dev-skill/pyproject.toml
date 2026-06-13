@@ -9,7 +9,8 @@ description = "Hermes-invocable skill: idea-to-code via Codex and Claude Code"
 requires-python = ">=3.11"
 dependencies = [
     "pyyaml>=6.0",
-    "jsonpatch>=2.0",
+    "jsonpatch>=1.33",
+    "filelock>=3.12",
 ]
 
 [project.optional-dependencies]

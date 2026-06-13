@@ -13,6 +13,9 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import jsonpatch
+from filelock import FileLock
+
 
 class StateError(Exception):
     """Raised when state cannot be read or is structurally invalid."""
@@ -93,3 +96,74 @@ class TransientError(Exception):
     that retrying with backoff might succeed. Non-transient errors should
     not be wrapped in this; they propagate up to halt the job.
     """
+
+
+def _lock_path(runs_dir: Path) -> Path:
+    return Path(runs_dir) / ".state.lock"
+
+
+def _eval_patch_expr(patch_expr: str | Any, current: dict[str, Any]) -> Any:
+    """Parse a patch expression.
+
+    `patch_expr` may be:
+      * a string containing a Python expression — `current` is bound to the
+        current state so the expression can reference it (e.g.
+        `'{ "counter": current["counter"] + 1 }'`).
+      * a JSON-Patch list (RFC 6902) such as
+        `[{"op": "replace", "path": "/phase", "value": "spec_plan"}]`.
+      * a shorthand dict like `{"phase": "spec_plan"}` (handled by caller
+        after this returns).
+
+    Returns the evaluated expression result.
+    """
+    if isinstance(patch_expr, str):
+        # eval rather than json.loads so the expression can reference
+        # `current`. Valid JSON is also valid Python (modulo null/true/false
+        # which the current callers don't use), so callers that pass a
+        # pure-JSON string still work. We dedent first so multi-line
+        # patches written with Python indentation work too.
+        import textwrap
+        return eval(  # noqa: S307 — callers are internal trusted code
+            textwrap.dedent(patch_expr),
+            {"current": current, "__builtins__": {}},
+        )
+    return patch_expr
+
+
+def atomic_update(runs_dir: Path, patch_expr: str | Any) -> None:
+    """Atomically read-modify-write state.json.
+
+    `patch_expr` is either:
+      * a Python expression string with `current` bound to the current
+        state (e.g. `'{ "counter": current["counter"] + 1 }'`)
+      * a JSON-Patch list (RFC 6902) such as
+        `[{"op": "replace", "path": "/phase", "value": "spec_plan"}]`
+      * a shorthand dict like `{"phase": "spec_plan"}` which is converted
+        to add-ops internally.
+
+    The whole operation is wrapped in a FileLock so concurrent updates
+    cannot lose data.
+    """
+    runs_dir = Path(runs_dir)
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(_lock_path(runs_dir))):
+        current_state = read(runs_dir)
+        patch_obj = _eval_patch_expr(patch_expr, current_state)
+        if not isinstance(patch_obj, list):
+            # Shorthand: convert {"path": value, ...} to JSON-Patch adds
+            patch_obj = [
+                {"op": "add", "path": "/" + k, "value": v}
+                for k, v in patch_obj.items()
+            ]
+        new_state = jsonpatch.apply_patch(current_state, patch_obj, in_place=False)
+        validate(new_state)
+        write(runs_dir, new_state)
+
+
+def get(runs_dir: Path, dotted_path: str) -> Any:
+    """Read a value from state.json by dotted path (e.g. 'user_overrides.max_review_rounds')."""
+    state = read(runs_dir)
+    cur: Any = state
+    for part in dotted_path.split("."):
+        cur = cur[part]
+    return cur
