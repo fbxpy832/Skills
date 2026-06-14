@@ -26,10 +26,12 @@ def test_unknown_subcommand_fails():
     assert r.returncode != 0
 
 
-def test_status_with_job_id():
-    r = run_cli("status", "abc123")
+def test_status_with_job_id(tmp_home):
+    r = run_cli("new", "x")
+    job_id = r.stdout.strip()
+    r = run_cli("status", job_id)
     assert r.returncode == 0
-    assert "abc123" in r.stderr
+    assert job_id in r.stdout
 
 
 def test_register_parses_default_branch():
@@ -65,3 +67,41 @@ def test_new_unique_job_ids(tmp_home):
         assert r.returncode == 0
         ids.add(r.stdout.strip())
     assert len(ids) == 3
+
+
+def test_status_pretty_prints_state(tmp_home):
+    # Create a job
+    r = run_cli("new", "x")
+    job_id = r.stdout.strip()
+    r = run_cli("status", job_id)
+    assert r.returncode == 0
+    assert job_id in r.stdout
+    assert "phase" in r.stdout
+    assert "clarify" in r.stdout
+
+
+def test_status_missing_job_prints_error(tmp_home):
+    r = run_cli("status", "nope-no-such-job")
+    assert r.returncode != 0
+    assert "not found" in r.stderr.lower()
+
+
+def test_list_shows_all_jobs(tmp_home):
+    run_cli("new", "a")
+    run_cli("new", "b")
+    r = run_cli("list")
+    assert r.returncode == 0
+    assert "2" in r.stdout  # 2 jobs
+
+
+def test_tail_prints_events_jsonl(tmp_home):
+    r = run_cli("new", "x")
+    job_id = r.stdout.strip()
+    runs = Path.home() / ".hermes" / "runs" / job_id
+    (runs / "events.jsonl").write_text(
+        '{"ts":"2026-01-01T00:00:00Z","event":"phase_enter","phase":"clarify"}\n',
+        encoding="utf-8",
+    )
+    r = run_cli("tail", job_id)
+    assert r.returncode == 0
+    assert "phase_enter" in r.stdout

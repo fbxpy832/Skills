@@ -82,18 +82,73 @@ def cmd_new(args: argparse.Namespace) -> int:
     return 0
 
 
+def _runs_dir() -> Path:
+    return Path(os.path.expanduser("~/.hermes/runs"))
+
+
+def _find_job(job_id: str) -> Path:
+    p = _runs_dir() / job_id
+    if not p.is_dir():
+        raise FileNotFoundError(f"job {job_id} not found")
+    return p
+
+
 def cmd_status(args: argparse.Namespace) -> int:
-    print(f"[stub] status: {args.job_id}", file=sys.stderr)
+    try:
+        job_dir = _find_job(args.job_id) if args.job_id else None
+    except FileNotFoundError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    if job_dir is None:
+        # No job_id given; pick the most recent
+        runs = _runs_dir()
+        if not runs.exists():
+            print("no jobs", file=sys.stderr)
+            return 1
+        jobs = sorted(runs.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+        if not jobs:
+            print("no jobs", file=sys.stderr)
+            return 1
+        job_dir = jobs[0]
+    s = state_lib.read(job_dir)
+    # Pretty print key fields
+    for key in ("job_id", "status", "phase", "phase_round", "intent"):
+        if key in s:
+            print(f"{key}: {s[key]}")
+    if "project" in s and s["project"]:
+        print(f"project: {s['project'].get('path', '<unset>')}")
     return 0
 
 
 def cmd_list(args: argparse.Namespace) -> int:
-    print("[stub] list", file=sys.stderr)
+    runs = _runs_dir()
+    if not runs.exists():
+        print("0 jobs")
+        return 0
+    jobs = sorted(runs.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+    print(f"{len(jobs)} job(s):")
+    for j in jobs:
+        try:
+            s = state_lib.read(j)
+        except state_lib.StateError:
+            print(f"  {j.name}  <corrupt>")
+            continue
+        print(f"  {j.name}  {s.get('status','?')}  phase={s.get('phase','?')}")
     return 0
 
 
 def cmd_tail(args: argparse.Namespace) -> int:
-    print(f"[stub] tail: {args.job_id}", file=sys.stderr)
+    try:
+        job_dir = _find_job(args.job_id)
+    except FileNotFoundError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    log = job_dir / "events.jsonl"
+    if not log.exists():
+        # Just print a friendly message and exit 0
+        print("(no events)")
+        return 0
+    sys.stdout.write(log.read_text(encoding="utf-8"))
     return 0
 
 
