@@ -34,13 +34,6 @@ def test_status_with_job_id(tmp_home):
     assert job_id in r.stdout
 
 
-def test_register_parses_default_branch():
-    r = run_cli("register", "stocks", "/x", "--default-branch", "main")
-    assert r.returncode == 0
-    assert "stocks" in r.stderr
-    assert "/x" in r.stderr
-
-
 def test_new_creates_runs_dir_and_state(tmp_home):
     r = run_cli("new", "build me a stock alerter")
     assert r.returncode == 0
@@ -146,3 +139,27 @@ def test_cancel_marks_halted(tmp_home):
     s = read(Path.home() / ".hermes" / "runs" / job_id)
     assert s["status"] == "halted"
     assert s["phase"] == "halted"
+
+
+def test_register_creates_entry(tmp_home):
+    r = run_cli("register", "stocks", "/tmp/stocks", "--default-branch", "main")
+    assert r.returncode == 0
+    import json
+    reg = json.loads((Path.home() / ".hermes" / "projects.json").read_text())
+    assert "stocks" in reg
+    assert reg["stocks"]["path"] == "/tmp/stocks"
+    assert reg["stocks"]["default_branch"] == "main"
+
+
+def test_unregister_removes_entry(tmp_home):
+    run_cli("register", "x", "/x")
+    r = run_cli("unregister", "x")
+    assert r.returncode == 0
+    import json
+    reg = json.loads((Path.home() / ".hermes" / "projects.json").read_text())
+    assert "x" not in reg
+
+
+def test_unregister_missing_fails(tmp_home):
+    r = run_cli("unregister", "never-existed")
+    assert r.returncode != 0

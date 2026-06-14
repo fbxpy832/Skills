@@ -29,6 +29,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from scripts.lib import state as state_lib
+from scripts.lib import project_registry
 
 
 def _generate_job_id() -> str:
@@ -192,12 +193,18 @@ def cmd_cancel(args: argparse.Namespace) -> int:
 
 
 def cmd_register(args: argparse.Namespace) -> int:
-    print(f"[stub] register: {args.name} -> {args.path}", file=sys.stderr)
+    project_registry.register(args.name, args.path, default_branch=args.default_branch)
+    print(f"registered '{args.name}' -> {args.path}")
     return 0
 
 
 def cmd_unregister(args: argparse.Namespace) -> int:
-    print(f"[stub] unregister: {args.name}", file=sys.stderr)
+    try:
+        project_registry.unregister(args.name)
+    except KeyError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    print(f"unregistered '{args.name}'")
     return 0
 
 
