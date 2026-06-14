@@ -182,3 +182,64 @@ def retry_with_backoff(fn, max_attempts: int = 3, base: float = 2.0):
                 time.sleep(base ** attempt)
     assert last_error is not None
     raise last_error
+
+
+# ---------------------------------------------------------------------------
+# CLI (`python -m scripts.lib.state ...`)
+# ---------------------------------------------------------------------------
+# Used by shell scripts (handlers, phase scripts) to read/write state.json
+# without re-implementing the JSON / atomicity / file-lock dance. Subcommands:
+#   write <runs_dir> <json>            Write state (replaces)
+#   get <state.json path> <dotted>     Print value at dotted path
+#   atomic_update <state.json path> <patch-expr>  Read-modify-write atomically
+# The patch expression for `atomic_update` is a Python expression that may
+# reference `current` (the existing state) and must return a dict.
+
+def _cli() -> int:
+    import json as _json
+    import sys as _sys
+
+    if len(_sys.argv) < 2:
+        print("usage: python -m scripts.lib.state {write|get|atomic_update} ...", file=_sys.stderr)
+        return 1
+
+    cmd = _sys.argv[1]
+    if cmd == "write":
+        if len(_sys.argv) != 4:
+            print("usage: python -m scripts.lib.state write <runs_dir> <json>", file=_sys.stderr)
+            return 1
+        runs_dir = Path(_sys.argv[2])
+        state = _json.loads(_sys.argv[3])
+        write(runs_dir, state)
+        return 0
+
+    if cmd == "get":
+        if len(_sys.argv) != 4:
+            print("usage: python -m scripts.lib.state get <state.json path> <dotted>", file=_sys.stderr)
+            return 1
+        state_path = Path(_sys.argv[2])
+        runs_dir = state_path.parent
+        dotted = _sys.argv[3]
+        state = read(runs_dir)
+        cur: Any = state
+        for part in dotted.split("."):
+            cur = cur[part]
+        print(cur)
+        return 0
+
+    if cmd == "atomic_update":
+        if len(_sys.argv) != 4:
+            print("usage: python -m scripts.lib.state atomic_update <state.json path> <patch-expr>", file=_sys.stderr)
+            return 1
+        state_path = Path(_sys.argv[2])
+        runs_dir = state_path.parent
+        patch_expr = _sys.argv[3]
+        atomic_update(runs_dir, patch_expr)
+        return 0
+
+    print(f"unknown subcommand: {cmd!r}", file=_sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli())
