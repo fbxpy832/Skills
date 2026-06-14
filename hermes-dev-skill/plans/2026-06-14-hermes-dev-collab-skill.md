@@ -1212,9 +1212,9 @@ from pathlib import Path
 
 
 VERDICT_RE = re.compile(r"^VERDICT:\s*(APPROVED|REJECTED)\s*$", re.MULTILINE)
-P0_RE = re.compile(r"\bP0\b")
-P1_RE = re.compile(r"\bP1\b")
-P2_RE = re.compile(r"\bP2\b")
+P0_RE = re.compile(r"\[P0\]")
+P1_RE = re.compile(r"\[P1\]")
+P2_RE = re.compile(r"\[P2\]")
 ISSUES_SECTION_RE = re.compile(
     r"##\s*Issues found\s*\n(.*?)(?=\n##|\Z)", re.DOTALL
 )
