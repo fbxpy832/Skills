@@ -837,7 +837,7 @@ git commit -m "feat(state): retry_with_backoff for transient errors"
 # hermes-dev-skill/tests/fixtures/fake_hermes.sh
 # A fake `hermes` CLI used in unit tests. Records args, returns a fake
 # message_id, and supports configurable failure modes.
-echo "$@" >> "${HERMES_TEST_LOG:-/tmp/hermes_test.log}"
+echo "$0 $@" >> "${HERMES_TEST_LOG:-/tmp/hermes_test.log}"
 case "${HERMES_TEST_FAIL:-ok}" in
     ok)
         echo "message_id: om_test_${RANDOM}"
