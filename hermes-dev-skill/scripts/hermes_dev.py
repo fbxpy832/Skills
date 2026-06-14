@@ -153,12 +153,41 @@ def cmd_tail(args: argparse.Namespace) -> int:
 
 
 def cmd_continue(args: argparse.Namespace) -> int:
-    print(f"[stub] continue: {args.job_id} force={args.force}", file=sys.stderr)
+    try:
+        job_dir = _find_job(args.job_id)
+    except FileNotFoundError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    s = state_lib.read(job_dir)
+    if s["status"] == "done":
+        print(f"job {args.job_id} is done; nothing to continue", file=sys.stderr)
+        return 1
+    if s["status"] == "halted" and not args.force:
+        print(
+            f"job {args.job_id} is halted; pass --force to resume anyway",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Mark as running and re-invoke the appropriate phase script.
+    # For v1, the phase scripts are stubs that just exit 0; the actual
+    # orchestrator will be implemented in later tasks. Here we just
+    # re-set the status.
+    state_lib.atomic_update(job_dir, '{"status": "running"}')
+    print(f"resuming job {args.job_id} from phase {s['phase']}")
     return 0
 
 
 def cmd_cancel(args: argparse.Namespace) -> int:
-    print(f"[stub] cancel: {args.job_id}", file=sys.stderr)
+    try:
+        job_dir = _find_job(args.job_id)
+    except FileNotFoundError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    state_lib.atomic_update(
+        job_dir, '{"status": "halted", "phase": "halted"}'
+    )
+    print(f"job {args.job_id} marked halted")
     return 0
 
 

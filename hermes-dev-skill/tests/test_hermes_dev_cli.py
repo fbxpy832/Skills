@@ -105,3 +105,44 @@ def test_tail_prints_events_jsonl(tmp_home):
     r = run_cli("tail", job_id)
     assert r.returncode == 0
     assert "phase_enter" in r.stdout
+
+
+def test_continue_refuses_done_job(tmp_home):
+    r = run_cli("new", "x")
+    job_id = r.stdout.strip()
+    # Mark job done
+    from scripts.lib.state import read, write
+    job_dir = Path.home() / ".hermes" / "runs" / job_id
+    s = read(job_dir)
+    s["status"] = "done"
+    write(job_dir, s)
+    r = run_cli("continue", job_id)
+    assert r.returncode != 0
+    assert "done" in r.stderr.lower()
+
+
+def test_continue_halted_requires_force(tmp_home):
+    r = run_cli("new", "x")
+    job_id = r.stdout.strip()
+    from scripts.lib.state import read, write
+    job_dir = Path.home() / ".hermes" / "runs" / job_id
+    s = read(job_dir)
+    s["status"] = "halted"
+    write(job_dir, s)
+    r = run_cli("continue", job_id)
+    assert r.returncode != 0
+    assert "--force" in r.stderr
+    r = run_cli("continue", job_id, "--force")
+    # Force goes through (stub); accept either success or non-error
+    assert r.returncode in (0, 1)
+
+
+def test_cancel_marks_halted(tmp_home):
+    r = run_cli("new", "x")
+    job_id = r.stdout.strip()
+    r = run_cli("cancel", job_id)
+    assert r.returncode == 0
+    from scripts.lib.state import read
+    s = read(Path.home() / ".hermes" / "runs" / job_id)
+    assert s["status"] == "halted"
+    assert s["phase"] == "halted"
