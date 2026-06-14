@@ -1,16 +1,16 @@
 # hermes-dev-skill/scripts/hermes_dev.py
 """hermes-dev CLI entry point.
 
-Subcommands (all stubbed initially, implemented in later tasks):
-  new          Create a new job
-  status       Show job state
-  list         List all known jobs
-  tail         Stream events.jsonl
-  continue     Resume a job from checkpoint
-  cancel       Mark a job halted
-  register     Add a project to the registry
-  unregister   Remove a project from the registry
-  reconcile    Scan for orphaned jobs
+Subcommands:
+  new          Create a new job (implemented)
+  status       Show job state (stub)
+  list         List all known jobs (stub)
+  tail         Stream events.jsonl (stub)
+  continue     Resume a job from checkpoint (stub)
+  cancel       Mark a job halted (stub)
+  register     Add a project to the registry (stub)
+  unregister   Remove a project from the registry (stub)
+  reconcile    Scan for orphaned jobs (stub)
 """
 from __future__ import annotations
 
