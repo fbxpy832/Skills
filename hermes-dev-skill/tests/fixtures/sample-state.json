@@ -1,0 +1,18 @@
+{
+  "job_id": "20260614-1030-a1b2c3",
+  "status": "running",
+  "phase": "review",
+  "phase_round": 2,
+  "project": {
+    "name": "stocks",
+    "path": "/Users/xpy/projects/stocks",
+    "branch": "hermes-dev/20260614-1030-a1b2c3",
+    "base_branch": "main",
+    "is_git": true
+  },
+  "artifacts": {
+    "requirements": "requirements.md",
+    "spec": "spec.md",
+    "plan": "plan.md"
+  }
+}
