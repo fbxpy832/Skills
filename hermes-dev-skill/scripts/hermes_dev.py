@@ -30,6 +30,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 from scripts.lib import state as state_lib
 from scripts.lib import project_registry
+from scripts.lib import reconcile
 
 
 def _generate_job_id() -> str:
@@ -208,8 +209,26 @@ def cmd_unregister(args: argparse.Namespace) -> int:
     return 0
 
 
+def _parse_age(age_str: str) -> int:
+    """Parse '5m' / '1h' / '30s' to seconds."""
+    s = age_str.strip().lower()
+    if s.endswith("s"):
+        return int(s[:-1])
+    if s.endswith("m"):
+        return int(s[:-1]) * 60
+    if s.endswith("h"):
+        return int(s[:-1]) * 3600
+    return int(s)
+
+
 def cmd_reconcile(args: argparse.Namespace) -> int:
-    print(f"[stub] reconcile age={args.age}", file=sys.stderr)
+    seconds = _parse_age(args.age)
+    n = reconcile.run(
+        age_seconds=seconds,
+        auto_resume=args.auto_resume,
+        dry_run=False,
+    )
+    print(f"reconciled {n} job(s)")
     return 0
 
 
