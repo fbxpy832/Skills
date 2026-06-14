@@ -26,12 +26,6 @@ def test_unknown_subcommand_fails():
     assert r.returncode != 0
 
 
-def test_new_stub_runs():
-    r = run_cli("new", "build me a thing")
-    assert r.returncode == 0
-    assert "build me a thing" in r.stderr
-
-
 def test_status_with_job_id():
     r = run_cli("status", "abc123")
     assert r.returncode == 0
@@ -43,3 +37,31 @@ def test_register_parses_default_branch():
     assert r.returncode == 0
     assert "stocks" in r.stderr
     assert "/x" in r.stderr
+
+
+def test_new_creates_runs_dir_and_state(tmp_home):
+    r = run_cli("new", "build me a stock alerter")
+    assert r.returncode == 0
+    # The CLI should print a job_id (e.g. 20260101-1200-abc123) to stdout
+    out = r.stdout.strip()
+    assert out  # non-empty
+    # The runs dir should exist with state.json
+    runs = Path.home() / ".hermes" / "runs"
+    jobs = list(runs.iterdir())
+    assert len(jobs) == 1
+    state_file = jobs[0] / "state.json"
+    assert state_file.exists()
+    import json
+    s = json.loads(state_file.read_text())
+    assert s["phase"] == "clarify"
+    assert s["status"] == "running"
+    assert s["intent"] == "build me a stock alerter"
+
+
+def test_new_unique_job_ids(tmp_home):
+    ids = set()
+    for _ in range(3):
+        r = run_cli("new", "x")
+        assert r.returncode == 0
+        ids.add(r.stdout.strip())
+    assert len(ids) == 3
