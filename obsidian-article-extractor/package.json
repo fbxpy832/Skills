@@ -1,16 +1,22 @@
 {
   "name": "obsidian-article-extractor",
   "version": "1.0.0",
-  "description": "",
+  "description": "从微信公众号/网页提取文章，转换为 Markdown 保存到 Obsidian Vault",
   "main": "extract-article.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "obsidian",
+    "wechat",
+    "markdown",
+    "article-extractor"
+  ],
+  "author": "Richard",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@mixmark-io/domino": "^2.2.0",
     "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2"
   }

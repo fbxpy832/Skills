@@ -1,6 +1,6 @@
 ---
 name: obsidian-article-extractor
-description: "从微信公众号或其他网页提取文章，转换为 Markdown 保存至 Obsidian Vault。图片 base64 内嵌，无需额外文件夹。Vault 路径和收件箱文件夹名分别缓存，首次调用后自动记忆。"
+description: "从微信公众号或其他网页提取文章，转换为 Markdown 保存至 Obsidian Vault。支持 base64 内嵌（默认）/ link 保留URL / attach 附件目录三种图片模式。Vault 路径和收件箱文件夹名分别缓存，首次调用后自动记忆。"
 metadata:
   requires:
     bins: [node]
@@ -12,16 +12,28 @@ metadata:
     - "微信公众号的 <title> 是 JS 渲染前为空，必须优先读 og:title 或 activity-name"
     - "中文 URL 在 Turndown 里会被编码成 &lt;...&gt;，占位符策略绕过此问题"
     - "微信图片需带 Referer: https://mp.weixin.qq.com/ 否则 403"
+    - "iCloud 云盘 vault 路径不易自动发现：标准路径 ~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian/Richardhub/ 下可能因同步状态而不可见，需用户通过 Finder 拖拽确认绝对路径"
+    - "HTTP 响应按 chunk 接收时必须加 res.setEncoding('utf-8')，否则中文字符跨 chunk 边界会被截断产生乱码（U+FFFD）。Node.js data 事件默认返回 Buffer，直接 html += chunk 逐 chunk 转字符串会破坏跨越 TCP 包边界的多字节 UTF-8 序列"
+  - "提取后必须验证关键段落的中文完整性。用 grep 或 python 扫描 U+FFFD 替换字符：python3 -c \"open('file.md').read().count(chr(0xFFFD))\""
+  - "图片 MIME 从 URL 扩展名推断，微信 CDN 无扩展名时可能误判。参考 references/utf8-chunk-boundary-fix.md"
 ---
 
 # Obsidian 文章提取器
 
 从微信公众号或其他网页提取文章内容，保存为 Markdown 文件到 Obsidian Vault 收件箱文件夹。
 
+## 触发条件（Agent 自动加载用）
+
+当用户分享以下类型链接时，**必须** 立即加载本技能（skill_view）并主动提供提取服务：
+- **微信公众号文章**：`mp.weixin.qq.com/s/...` 链接
+- 其他可公开访问的网页文章
+
+不要先自行用浏览器读取内容再询问是否需要保存，**直接加载本技能并提供提取选项**。
+
 ## 基本用法
 
 ```bash
-node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-extractor}/extract-article.js <url> [vaultPath] [inboxFolder]
+node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/obsidian-article-extractor}/extract-article.js <url> [vaultPath] [inboxFolder] [--image-mode base64|link|attach] [--verbose]
 ```
 
 | 参数 | 说明 |
@@ -29,12 +41,14 @@ node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-e
 | `url` | 文章链接（必填） |
 | `vaultPath` | Obsidian Vault 路径（首次必填，之后省略） |
 | `inboxFolder` | 目标文件夹（首次必填，之后省略） |
+| `--image-mode MODE` | 图片处理模式：`base64`（默认，内嵌到 md）\| `link`（保留原始 URL 链接）\| `attach`（存到 `.obsidian-attachments/`） |
+| `--verbose` / `-v` | 开启详细错误堆栈输出 |
 
 ## 使用步骤
 
 **第一次使用** — 需传入 vault 路径和收件箱文件夹（提取后自动记忆）：
 ```bash
-node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-extractor}/extract-article.js \
+node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/obsidian-article-extractor}/extract-article.js \
   "https://mp.weixin.qq.com/s/xxxxx" \
   "/Users/你的/Vault/路径" \
   "收件箱"
@@ -42,7 +56,7 @@ node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-e
 
 **之后使用** — 直接传 URL，其他参数自动复用：
 ```bash
-node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-extractor}/extract-article.js "https://mp.weixin.qq.com/s/xxxxx"
+node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/obsidian-article-extractor}/extract-article.js "https://mp.weixin.qq.com/s/xxxxx"
 ```
 
 ## 常见问题
@@ -51,15 +65,24 @@ node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-e
 - **收件箱名称不对**：删掉 `~/.config/obsidian-article-extractor/inbox-folder`，重新传入
 - **微信公众号失败**：部分付费/登录内容无法提取，换用镜像站（sohu.com / 53ai.com / finance.sina.com.cn）
 - **图片下载失败**：保留原始 URL，不影响正文内容
+- **iCloud 云盘 vault 找不到**：路径为 `~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian/Richardhub/` 但因 iCloud 同步状态可能无法被 find/mdfind 发现。让用户在 Finder 中将 vault 文件夹拖入终端以获取准确绝对路径
 
 ## 实现亮点
 
 1. **Turndown + GFM** — 专业 HTML→Markdown 转换，代码块/表格/GFM 支持
-2. **图片 base64 内嵌** — 图片直接转为 `data:image/jpeg;base64,...` 存入 Markdown，单文件即可迁移
+2. **图片 base64 内嵌** — 图片直接转为 `data:image/jpeg;base64,...` 存入 Markdown，单文件即可迁移。还支持 `--image-mode link`（保留原始 URL）和 `--image-mode attach`（附件文件夹）两种模式
 3. **微信公众号优化** — 识别 `js_content` 区域，提取作者/发布日期
 4. **标题 fallback** — HTML 标题为空时从 markdown 正文 H1 反向补全
 5. **双参数缓存** — Vault 路径和收件箱文件夹名分别缓存，互不干扰
 6. **HTML 实体解码** — `&#39;` → `'`、`&amp;` → `&` 等
+7. **UTF-8 流式解码** — `res.setEncoding('utf-8')` 防止多字节字符跨 TCP 包边界被截断（详见 [references/utf8-chunk-boundary-fix.md](references/utf8-chunk-boundary-fix.md)）
+
+## 提取后验证
+
+每次提取后必须验证中文完整性，防止静默乱码：
+```bash
+python3 -c "count = open('FILE.md').read().count(chr(0xFFFD)); print(f'替换字符数: {count}')"
+```
 
 ## 输出格式
 

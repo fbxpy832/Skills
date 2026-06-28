@@ -11,7 +11,7 @@
 首次使用时传入 Obsidian Vault 路径，脚本会缓存到当前 Mac 的 `~/.config/obsidian-article-extractor/vault-path`：
 
 ```bash
-node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-extractor}/extract-article.js \
+node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/obsidian-article-extractor}/extract-article.js \
   "https://example.com/article" \
   "/path/to/your/Obsidian/Vault"
 ```
@@ -37,19 +37,19 @@ ls ~/Obsidian/Vault/收件箱 2>/dev/null || echo "收件箱文件夹不存在�
 
 ```bash
 # 基本用法（使用当前 Mac 缓存的 Vault 路径）
-node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-extractor}/extract-article.js <url>
+node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/obsidian-article-extractor}/extract-article.js <url>
 
 # 示例：提取微信公众号文章
-node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-extractor}/extract-article.js \
+node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/obsidian-article-extractor}/extract-article.js \
   "https://mp.weixin.qq.com/s/xxxxx"
 
 # 示例：提取普通网页（指定 Vault 路径）
-node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-extractor}/extract-article.js \
+node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/obsidian-article-extractor}/extract-article.js \
   "https://example.com/article" \
   "/Users/xxx/Obsidian/Vault"
 
 # 示例：使用自定义收件箱文件夹
-node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-extractor}/extract-article.js \
+node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/obsidian-article-extractor}/extract-article.js \
   "https://mp.weixin.qq.com/s/xxxxx" \
   "/Users/xxx/Obsidian/Vault" \
   "微信文章"
@@ -65,7 +65,7 @@ node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-e
 ```bash
 ARTICLE_URL="用户提供的URL"
 
-node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-extractor}/extract-article.js "$ARTICLE_URL"
+node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/obsidian-article-extractor}/extract-article.js "$ARTICLE_URL"
 ```
 
 ## 输出示例
@@ -78,7 +78,9 @@ node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-e
   "filePath": "/Users/xxx/Obsidian/Vault/收件箱/2026-04-21T10-30-00_如何学习编程.md",
   "title": "如何学习编程",
   "author": "张三",
-  "publishedDate": "2026-04-20"
+  "publishedDate": "2026-04-20",
+  "isWxArticle": true,
+  "imagesEmbedded": 6
 }
 ```
 
@@ -97,12 +99,16 @@ node ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/obsidian-article-e
 ---
 title: "文章标题"
 url: "https://..."
-author: 作者名
+author: "作者名"
 date: 2026-04-21
-source: https://...
+description: "文章简介内容（取自 og:description）"
+cover: "https://mmbiz.qpic.cn/cover-image.jpg"
+source: wx
 tags:
   - article
   - inbox
+  - wx
+created: 2026-04-21T10-30-00.000Z
 ---
 
 # 文章标题
