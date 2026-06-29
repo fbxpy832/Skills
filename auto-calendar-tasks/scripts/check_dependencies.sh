@@ -32,9 +32,9 @@ case "$target" in
     ;;
   lark|feishu)
     check_cmd lark-cli
-    check_path lark-shared-skill "$HOME/.agents/skills/lark-shared"
-    check_path lark-calendar-skill "$HOME/.agents/skills/lark-calendar"
-    check_path lark-task-skill "$HOME/.agents/skills/lark-task"
+    check_path lark-shared-skill "$HOME/.codex/memories/skills/lark-shared"
+    check_path lark-calendar-skill "$HOME/.codex/memories/skills/lark-calendar"
+    check_path lark-task-skill "$HOME/.codex/memories/skills/lark-task"
     ;;
   all)
     "$0" apple || status=1

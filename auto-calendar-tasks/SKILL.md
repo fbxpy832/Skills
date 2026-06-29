@@ -26,7 +26,7 @@ Use `scripts/apple_add.py` for Apple targets. It wraps macOS `osascript` and han
 Examples:
 
 ```bash
-python3 ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/auto-calendar-tasks}/scripts/apple_add.py event \
+python3 ${AGENT_SKILL_DIR:-$HOME/.codex/memories/skills/auto-calendar-tasks}/scripts/apple_add.py event \
   --title "Project sync" \
   --start "2026-04-24 15:00" \
   --duration-minutes 30 \
@@ -35,7 +35,7 @@ python3 ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/auto-calendar-t
 ```
 
 ```bash
-python3 ${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/auto-calendar-tasks}/scripts/apple_add.py task \
+python3 ${AGENT_SKILL_DIR:-$HOME/.codex/memories/skills/auto-calendar-tasks}/scripts/apple_add.py task \
   --title "Submit expenses" \
   --due "2026-04-25 18:00" \
   --list "Reminders" \
@@ -74,8 +74,8 @@ When creating a Lark calendar event that includes a meeting:
 Run the dependency check before live changes, not after:
 
 ```bash
-${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/auto-calendar-tasks}/scripts/check_dependencies.sh apple
-${AGENT_SKILL_DIR:-$HOME/Documents/RichardHub/Git/Skills/auto-calendar-tasks}/scripts/check_dependencies.sh lark
+${AGENT_SKILL_DIR:-$HOME/.codex/memories/skills/auto-calendar-tasks}/scripts/check_dependencies.sh apple
+${AGENT_SKILL_DIR:-$HOME/.codex/memories/skills/auto-calendar-tasks}/scripts/check_dependencies.sh lark
 ```
 
 If a dependency is missing, fix it before creating the event/task when possible. Do not silently fall back from an explicitly requested Lark record to Apple, or from Apple to Lark.

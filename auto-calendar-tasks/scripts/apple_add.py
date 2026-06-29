@@ -6,40 +6,39 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import os
 import subprocess
 import sys
-import tempfile
 
 
 MONTHS = "January February March April May June July August September October November December".split()
 
 
-def parse_datetime(value: str) -> dt.datetime:
+def parse_datetime(value: str) -> tuple[dt.datetime, bool]:
+    """Return (datetime, is_date_only)."""
     value = value.strip()
     formats = [
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%d %H:%M",
-        "%Y/%m/%d %H:%M:%S",
-        "%Y/%m/%d %H:%M",
-        "%Y-%m-%d",
-        "%Y/%m/%d",
+        ("%Y-%m-%d %H:%M:%S", False),
+        ("%Y-%m-%d %H:%M", False),
+        ("%Y/%m/%d %H:%M:%S", False),
+        ("%Y/%m/%d %H:%M", False),
+        ("%Y-%m-%d", True),
+        ("%Y/%m/%d", True),
     ]
-    for fmt in formats:
+    for fmt, is_date_only in formats:
         try:
             parsed = dt.datetime.strptime(value, fmt)
-            if fmt in ("%Y-%m-%d", "%Y/%m/%d"):
-                return parsed.replace(hour=9, minute=0)
-            return parsed
+            return parsed, is_date_only
         except ValueError:
             pass
     try:
-        return dt.datetime.fromisoformat(value)
+        return dt.datetime.fromisoformat(value), False
     except ValueError as exc:
         raise SystemExit(f"Could not parse datetime: {value!r}") from exc
 
 
 def date_args(value: dt.datetime) -> list[str]:
+    if value.tzinfo is not None:
+        value = value.astimezone()
     return [
         str(value.year),
         str(value.month),
@@ -51,25 +50,17 @@ def date_args(value: dt.datetime) -> list[str]:
 
 
 def run_osascript(script: str, args: list[str]) -> str:
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".applescript", delete=False) as script_file:
-        script_file.write(script)
-        script_path = script_file.name
-    try:
-        proc = subprocess.run(
-            ["osascript", script_path, *args],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
-        if proc.returncode != 0:
-            raise SystemExit(proc.stderr.strip() or f"osascript failed with code {proc.returncode}")
-        return proc.stdout.strip()
-    finally:
-        try:
-            os.unlink(script_path)
-        except FileNotFoundError:
-            pass
+    proc = subprocess.run(
+        ["osascript", "-", *args],
+        input=script,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise SystemExit(proc.stderr.strip() or f"osascript failed with code {proc.returncode}")
+    return proc.stdout.strip()
 
 
 def make_applescript_date_function() -> str:
@@ -77,11 +68,12 @@ def make_applescript_date_function() -> str:
     return f"""
 on makeDate(y, m, d, h, minValue, s)
   set theDate to current date
-  -- Set day BEFORE month to avoid overflow bug when current day > target month length
-  -- e.g. May 31 → month 6 overflows to July 1 if day is set after month
-  set day of theDate to d as integer
+  -- Set day to 1 first to avoid overflow bug when current day > target month length
+  -- e.g. Mar 31 → set month to Feb overflows to Mar 3 if day is still 31
+  set day of theDate to 1
   set month of theDate to item (m as integer) of {{{month_items}}}
   set year of theDate to y as integer
+  set day of theDate to d as integer
   set time of theDate to ((h as integer) * hours + (minValue as integer) * minutes + (s as integer))
   return theDate
 end makeDate
@@ -89,16 +81,23 @@ end makeDate
 
 
 def create_event(args: argparse.Namespace) -> None:
-    start = parse_datetime(args.start)
+    start, start_is_date = parse_datetime(args.start)
     if args.end:
-        end = parse_datetime(args.end)
+        end, _ = parse_datetime(args.end)
     else:
         end = start + dt.timedelta(minutes=args.duration_minutes)
+
+    # Date-only -> all-day event: midnight to next midnight, no alarm
+    if start_is_date:
+        start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+        if not args.end:
+            end = start + dt.timedelta(days=1)
+
     if end <= start:
         raise SystemExit("Event end must be after start.")
 
     if args.dry_run:
-        print(json.dumps({"dry_run": True, "type": "event", "title": args.title, "start": start.isoformat(), "end": end.isoformat(), "calendar": args.calendar, "location": args.location, "notes": args.notes, "url": args.url, "alarm_minutes": args.alarm_minutes}, ensure_ascii=False))
+        print(json.dumps({"dry_run": True, "type": "event", "title": args.title, "start": start.isoformat(), "end": end.isoformat(), "calendar": args.calendar, "location": args.location, "notes": args.notes, "url": args.url, "alarm_minutes": args.alarm_minutes if args.alarm_minutes > 0 else None}, ensure_ascii=False))
         return
 
     script = (
@@ -123,7 +122,7 @@ on run argv
     if eventLocation is not "" then set location of newEvent to eventLocation
     if eventNotes is not "" then set description of newEvent to eventNotes
     if eventUrl is not "" then set url of newEvent to eventUrl
-    if alarmMinutes is greater than or equal to 0 then
+    if alarmMinutes is greater than 0 then
       make new display alarm at end of display alarms of newEvent with properties {trigger interval:(0 - alarmMinutes)}
     end if
     return uid of newEvent
@@ -139,17 +138,22 @@ end run
             args.location or "",
             args.notes or "",
             args.url or "",
-            str(args.alarm_minutes),
+            str(args.alarm_minutes if args.alarm_minutes > 0 else -1),
             *date_args(start),
             *date_args(end),
         ],
     )
-    print(json.dumps({"type": "event", "uid": output, "title": args.title, "start": start.isoformat(), "end": end.isoformat(), "alarm_minutes": args.alarm_minutes}, ensure_ascii=False))
+    print(json.dumps({"type": "event", "uid": output, "title": args.title, "start": start.isoformat(), "end": end.isoformat(), "alarm_minutes": args.alarm_minutes if args.alarm_minutes > 0 else None}, ensure_ascii=False))
 
 
 def create_task(args: argparse.Namespace) -> None:
-    due = parse_datetime(args.due) if args.due else None
-    alarm = due - dt.timedelta(minutes=args.alarm_minutes) if due and args.alarm_minutes >= 0 else None
+    due = None
+    due_is_date = False
+    if args.due:
+        due, due_is_date = parse_datetime(args.due)
+        if due_is_date:
+            due = due.replace(hour=23, minute=59, second=0, microsecond=0)
+    alarm = (due - dt.timedelta(minutes=args.alarm_minutes)) if due and args.alarm_minutes > 0 else None
     due_parts = date_args(due) if due else ["", "", "", "", "", ""]
     alarm_parts = date_args(alarm) if alarm else ["", "", "", "", "", ""]
 
@@ -216,7 +220,7 @@ def build_parser() -> argparse.ArgumentParser:
     event.add_argument("--location")
     event.add_argument("--notes")
     event.add_argument("--url")
-    event.add_argument("--alarm-minutes", type=int, default=15, help="Use -1 for no alarm")
+    event.add_argument("--alarm-minutes", type=int, default=15, help="Use 0 or -1 for no alarm")
     event.add_argument("--dry-run", action="store_true", help="Print the planned event without creating it")
     event.set_defaults(func=create_event)
 
@@ -225,7 +229,7 @@ def build_parser() -> argparse.ArgumentParser:
     task.add_argument("--due", help="YYYY-MM-DD HH:MM or ISO datetime")
     task.add_argument("--list")
     task.add_argument("--notes")
-    task.add_argument("--alarm-minutes", type=int, default=15, help="Use -1 for no alarm")
+    task.add_argument("--alarm-minutes", type=int, default=15, help="Use 0 or -1 for no alarm")
     task.add_argument("--dry-run", action="store_true", help="Print the planned task without creating it")
     task.set_defaults(func=create_task)
 
