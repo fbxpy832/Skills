@@ -7,7 +7,18 @@ entities.json
 
 .DS_Store
 .codepilot-uploads/
+a-fusion-orchestrator/
+codex-memory-system/
+ios-projects/
 tokendashboard/
+-NSConflict.git/
+.git.backup.*/
+.autoloop/
+.claude/
+.sisyphus/
+obsidian-ui-opencode/
+CLAUDE.md
+.permission-test.txt
 __pycache__/
 *.py[cod]
 *.egg-info/
