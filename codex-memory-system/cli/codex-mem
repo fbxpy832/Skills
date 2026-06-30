@@ -1,0 +1,316 @@
+#!/usr/bin/env python3
+"""codex-mem: Obsidian Vault 记忆检索/写入 CLI
+
+单一真相源为 Obsidian vault 中的 Codex-Memory/ 和 Codex-Input/。
+绕过不稳定的 codex native memory consolidation，通过 AGENTS.md 注入记忆指针。
+"""
+import sys
+import os
+import re
+import glob
+import argparse
+from pathlib import Path
+from datetime import datetime
+
+
+# ---------- vault 路径自动检测 ----------
+CANDIDATE_ROOTS = [
+    Path.home() / "Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub",
+    Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Obsidian/Richardhub",
+    Path.home() / "Documents/RichardHub/RichardHub",
+]
+CACHE_FILE = Path.home() / ".config/obsidian-article-extractor/vault-path"
+
+
+def find_vault() -> Path | None:
+    """自动发现 Obsidian vault 根目录（含 Codex-Memory/ 子目录）。"""
+    # 1. 缓存
+    if CACHE_FILE.exists():
+        p = CACHE_FILE.read_text().strip().replace("~", str(Path.home()))
+        if (Path(p) / "Codex-Memory").is_dir():
+            return Path(p)
+    # 2. 候选列表
+    for root in CANDIDATE_ROOTS:
+        if (root / "Codex-Memory").is_dir():
+            return root
+    # 3. 环境变量
+    env = os.environ.get("OBSIDIAN_VAULT")
+    if env and (Path(env) / "Codex-Memory").is_dir():
+        return Path(env)
+    return None
+
+
+def mem_dir(vault: Path, sub: str) -> Path:
+    return vault / sub
+
+
+# ---------- frontmatter 解析 ----------
+FM_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+
+def parse_frontmatter(text: str) -> tuple[dict, str]:
+    m = FM_RE.match(text)
+    if not m:
+        return {}, text
+    raw = m.group(1)
+    body = text[m.end():]
+    meta = {}
+    for line in raw.splitlines():
+        if ":" in line:
+            k, _, v = line.partition(":")
+            meta[k.strip()] = v.strip().strip('"').strip("'")
+    return meta, body
+
+
+def slugify(s: str) -> str:
+    s = s.lower().strip()
+    s = re.sub(r"[^\w\s-]", "", s)
+    s = re.sub(r"[\s_-]+", "-", s)
+    return s.strip("-")
+
+
+# ---------- 子命令实现 ----------
+def cmd_status(args):
+    vault = find_vault()
+    if not vault:
+        print("ERROR: 未找到 Obsidian vault。请设置 OBSIDIAN_VAULT 环境变量。", file=sys.stderr)
+        return 1
+    print(f"Vault: {vault}")
+    cm = mem_dir(vault, "Codex-Memory")
+    ci = mem_dir(vault, "Codex-Input")
+    gt = cm / "Ground-Truth.md"
+    print(f"Ground-Truth: {'存在' if gt.exists() else '缺失'}")
+    projects = sorted(cm.glob("projects/*.md"))
+    sessions = sorted(cm.glob("sessions/*.md"))
+    inputs = sorted(ci.glob("*.md"))
+    print(f"Projects: {len(projects)} | Sessions: {len(sessions)} | Inputs: {len(inputs)}")
+    if sessions:
+        latest = sorted(sessions)[-1].stem
+        print(f"最近会话: {latest}")
+    print(f"Native memories (~/.codex/memories): {'仅 placeholder（预期，方案已绕过）'}")
+    return 0
+
+
+def cmd_ground_truth(args):
+    vault = find_vault()
+    if not vault:
+        print("ERROR: 未找到 vault", file=sys.stderr)
+        return 1
+    gt = mem_dir(vault, "Codex-Memory") / "Ground-Truth.md"
+    if not gt.exists():
+        print("ERROR: Ground-Truth.md 不存在", file=sys.stderr)
+        return 1
+    sys.stdout.write(gt.read_text())
+    return 0
+
+
+def _iter_all_md(vault: Path):
+    for sub in ("Codex-Memory", "Codex-Input"):
+        d = vault / sub
+        if d.is_dir():
+            for f in d.rglob("*.md"):
+                yield f
+
+
+def cmd_search(args):
+    vault = find_vault()
+    if not vault:
+        print("ERROR: 未找到 vault", file=sys.stderr)
+        return 1
+    kw = args.keyword
+    hits = []
+    for f in _iter_all_md(vault):
+        try:
+            text = f.read_text(errors="replace")
+        except Exception:
+            continue
+        if kw.lower() in text.lower():
+            rel = f.relative_to(vault)
+            # 取匹配行的上下文
+            ctx = []
+            for i, line in enumerate(text.splitlines(), 1):
+                if kw.lower() in line.lower():
+                    ctx.append(f"  L{i}: {line.strip()[:80]}")
+                    if len(ctx) >= 2:
+                        break
+            hits.append((rel, ctx))
+    if not hits:
+        print(f"未匹配到关键词: {kw}")
+        return 0
+    print(f"命中 {len(hits)} 个文件：\n")
+    for rel, ctx in hits:
+        print(f"## {rel}")
+        for line in ctx:
+            print(line)
+        print()
+    return 0
+
+
+def cmd_read(args):
+    vault = find_vault()
+    if not vault:
+        print("ERROR: 未找到 vault", file=sys.stderr)
+        return 1
+    name = args.name.lower()
+    candidates = list(_iter_all_md(vault))
+    matches = [f for f in candidates if name in f.stem.lower() or name in f.name.lower()]
+    if not matches:
+        print(f"未找到匹配 '{args.name}' 的文件", file=sys.stderr)
+        return 1
+    if len(matches) > 1 and not args.exact:
+        print(f"匹配到 {len(matches)} 个文件，请精确指定：")
+        for f in matches:
+            print(f"  {f.relative_to(vault)}")
+        return 0
+    target = matches[0]
+    sys.stdout.write(target.read_text())
+    return 0
+
+
+def cmd_projects(args):
+    vault = find_vault()
+    if not vault:
+        print("ERROR: 未找到 vault", file=sys.stderr)
+        return 1
+    pd = mem_dir(vault, "Codex-Memory") / "projects"
+    if not pd.is_dir():
+        print("无 projects 目录")
+        return 0
+    for f in sorted(pd.glob("*.md")):
+        text = f.read_text(errors="replace")
+        meta, _ = parse_frontmatter(text)
+        # 统计 wikilink 会话数
+        sess = len(re.findall(r"\[\[Codex-Memory/sessions/", text))
+        print(f"- {f.stem}  (会话引用: {sess})")
+    return 0
+
+
+def cmd_sessions(args):
+    vault = find_vault()
+    if not vault:
+        print("ERROR: 未找到 vault", file=sys.stderr)
+        return 1
+    sd = mem_dir(vault, "Codex-Memory") / "sessions"
+    files = sorted(sd.glob("*.md"))
+    n = args.n
+    for f in files[-n:]:
+        text = f.read_text(errors="replace")
+        meta, body = parse_frontmatter(text)
+        title_line = ""
+        for line in body.splitlines():
+            if line.startswith("# "):
+                title_line = line[2:].strip()
+                break
+        print(f"- {f.stem}  |  {title_line}")
+    return 0
+
+
+def cmd_write_session(args):
+    vault = find_vault()
+    if not vault:
+        print("ERROR: 未找到 vault", file=sys.stderr)
+        return 1
+    src = Path(args.md_file)
+    if not src.exists():
+        print(f"ERROR: 源文件不存在: {src}", file=sys.stderr)
+        return 1
+    title = args.title
+    ts = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    slug = slugify(title)[:40]
+    fname = f"{ts}-{slug}.md"
+    sd = mem_dir(vault, "Codex-Memory") / "sessions"
+    sd.mkdir(parents=True, exist_ok=True)
+    dest = sd / fname
+    content = src.read_text()
+    # 若无 frontmatter，补一个
+    if not content.startswith("---"):
+        project = args.project or ""
+        content = (
+            "---\n"
+            f"type: session\ndate: {datetime.now().strftime('%Y-%m-%d')}\n"
+            f'project: "{project}"\ncodex-generated: true\n---\n\n'
+            f"# {title}\n\n{content}\n"
+        )
+    dest.write_text(content)
+    print(f"已写入: {dest}")
+    # 更新项目卡
+    if args.project:
+        _update_project_card(vault, args.project, fname, title)
+    return 0
+
+
+def _update_project_card(vault: Path, project: str, session_fname: str, title: str):
+    pd = mem_dir(vault, "Codex-Memory") / "projects"
+    if not pd.is_dir():
+        return
+    # 模糊匹配项目文件
+    matches = [f for f in pd.glob("*.md") if project.lower() in f.stem.lower()]
+    if not matches:
+        return
+    card = matches[0]
+    stem = session_fname[:-3] if session_fname.endswith(".md") else session_fname
+    link = f"- [[Codex-Memory/sessions/{stem}|{datetime.now().strftime('%Y-%m-%d')} - {title}]]"
+    text = card.read_text()
+    # 幂等：检查是否已有相同标题+日期的 session
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    if f"{date_str} - {title}" in text:
+        return  # 已存在
+    # 插入到 "## 会话记录" 之后
+    if "## 会话记录" in text:
+        text = text.replace("## 会话记录\n", f"## 会话记录\n{link}\n", 1)
+    else:
+        text += f"\n## 会话记录\n\n{link}\n"
+    card.write_text(text)
+    print(f"已更新项目卡: {card.name}")
+
+
+def cmd_index(args):
+    vault = find_vault()
+    if not vault:
+        print("ERROR: 未找到 vault", file=sys.stderr)
+        return 1
+    cm = mem_dir(vault, "Codex-Memory")
+    print("# Codex 记忆索引（自动生成）\n")
+    print(f"- 权威记忆: Ground-Truth.md")
+    projects = sorted(cm.glob("projects/*.md"))
+    sessions = sorted(cm.glob("sessions/*.md"))
+    print(f"\n## 项目 ({len(projects)})\n")
+    for f in projects:
+        print(f"- [[Codex-Memory/projects/{f.stem}|{f.stem}]]")
+    print(f"\n## 会话 ({len(sessions)})\n")
+    for f in sessions:
+        print(f"- [[Codex-Memory/sessions/{f.stem}|{f.stem}]]")
+    return 0
+
+
+# ---------- 入口 ----------
+def main():
+    ap = argparse.ArgumentParser(prog="codex-mem", description="Obsidian Vault 记忆检索/写入工具")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("status", help="显示 vault 路径和记忆统计").set_defaults(fn=cmd_status)
+    sub.add_parser("ground-truth", help="输出 Ground-Truth.md 全文").set_defaults(fn=cmd_ground_truth)
+    s = sub.add_parser("search", help="全文搜索记忆文件")
+    s.add_argument("keyword")
+    s.set_defaults(fn=cmd_search)
+    r = sub.add_parser("read", help="读取指定记忆文件")
+    r.add_argument("name", help="文件名关键词（模糊匹配）")
+    r.add_argument("--exact", action="store_true")
+    r.set_defaults(fn=cmd_read)
+    sub.add_parser("projects", help="列出所有项目").set_defaults(fn=cmd_projects)
+    ss = sub.add_parser("sessions", help="列出最近会话")
+    ss.add_argument("n", type=int, nargs="?", default=10)
+    ss.set_defaults(fn=cmd_sessions)
+    w = sub.add_parser("write-session", help="写入会话摘要到 Obsidian")
+    w.add_argument("title")
+    w.add_argument("md_file", help="本地 md 文件路径")
+    w.add_argument("--project", default="", help="关联项目名")
+    w.set_defaults(fn=cmd_write_session)
+    sub.add_parser("index", help="自动生成记忆索引").set_defaults(fn=cmd_index)
+
+    args = ap.parse_args()
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
