@@ -6,6 +6,11 @@ entities.json
 .deep-research-runs/
 
 .DS_Store
+.codepilot-uploads/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
 node_modules/
 skill-hub/node_modules/
 .superpowers/

@@ -24,6 +24,30 @@ from .utils import (
     clean_input, is_likely_english, norm_word,
 )
 
+def _handle_duplicate_policy(
+    store, client, config, word_orig, normalized,
+    context=None, date_format=None
+):
+    """Handle duplicate word according to configured policy.
+
+    Returns (action_description, was_handled).
+    """
+    if date_format is None:
+        date_format = config.date_format
+    if config.duplicate_policy == "skip":
+        return f'"{word_orig}" already exists, skipped.', True
+    elif config.duplicate_policy == "overwrite":
+        data = client.lookup(word_orig, context)
+        entry_md = render_vocab_entry(data, context=context, date_format=date_format)
+        store.overwrite_entry(normalized, entry_md)
+        return f'Overwritten entry for "{word_orig}".', True
+    elif config.duplicate_policy == "append_encounter":
+        encounter_md = render_encounter_entry(context=context, date_format=date_format)
+        store.append_encounter(normalized, encounter_md)
+        return f'Added encounter record for "{word_orig}".', True
+    else:
+        raise ValueError(f"Invalid duplicate_policy '{config.duplicate_policy}'")
+
 app = typer.Typer(
     name="obsidian-vocab-capture",
     help="English vocabulary capture tool for Obsidian",
@@ -115,47 +139,27 @@ def add(
 
     console.print(f'🔍 Looking up: [bold cyan]{cleaned_word}[/bold cyan]')
 
+    # Validate English
+    if not is_likely_english(cleaned_word):
+        console.print(f'[yellow]"{cleaned_word}" does not appear to be English.[/yellow]')
+        raise typer.Exit(1)
+
     # Check duplicate
     normalized = norm_word(cleaned_word)
     if store.word_exists(normalized):
-        console.print(f'[yellow]⚠️  "{cleaned_word}" already exists in vocabulary.[/yellow]')
-
-        if config.duplicate_policy == "skip":
-            console.print("[dim]Policy: skip - no action taken.[/dim]")
-            return
-
-        elif config.duplicate_policy == "overwrite":
-            console.print("[yellow]Policy: overwrite - replacing entry...[/yellow]")
-            # Look up again and overwrite
-            client = AIClient(config)
-            try:
-                data = client.lookup(cleaned_word, context)
-                entry_md = render_vocab_entry(data, context=context,
-                                              date_format=config.date_format)
-                store.overwrite_entry(normalized, entry_md)
-                console.print(f'[green]✅ Overwritten entry for "{cleaned_word}"[/green]')
-            finally:
-                client.close()
-            return
-
-        elif config.duplicate_policy == "append_encounter":
-            console.print("[dim]Policy: append_encounter - adding encounter record.[/dim]")
-            encounter_md = render_encounter_entry(context=context,
-                                                  date_format=config.date_format)
-            try:
-                store.append_encounter(normalized, encounter_md)
-                console.print(f'[green]✅ Added encounter record for "{cleaned_word}"[/green]')
-            except ValueError as e:
-                console.print(f"[red]Error: {e}[/red]")
-                raise typer.Exit(1)
-            return
-
-        else:
-            console.print(
-                f"[red]Error: Invalid duplicate_policy '{config.duplicate_policy}'. "
-                f"Must be one of: skip, append_encounter, overwrite[/red]"
+        client = AIClient(config)
+        try:
+            action, _ = _handle_duplicate_policy(
+                store, client, config, cleaned_word, normalized,
+                context=context, date_format=config.date_format,
             )
+            console.print(f'[yellow]\u26a0\ufe0f  "{cleaned_word}" already exists. {action}[/yellow]')
+        except ValueError as e:
+            console.print(f"[red]Error: {e}[/red]")
             raise typer.Exit(1)
+        finally:
+            client.close()
+        return
 
     # Not a duplicate - look up and add
     client = AIClient(config)
@@ -225,23 +229,14 @@ def clip(
         normalized = norm_word(cleaned)
 
         if store.word_exists(normalized):
-            console.print(f'[yellow]⚠️  "{cleaned}" already exists.[/yellow]')
-            if config.duplicate_policy == "skip":
-                return
-            elif config.duplicate_policy == "append_encounter":
-                encounter_md = render_encounter_entry(date_format=config.date_format)
-                store.append_encounter(normalized, encounter_md)
-                console.print(f'[green]✅ Added encounter record.[/green]')
-            elif config.duplicate_policy == "overwrite":
-                data = client.lookup(cleaned)
-                entry_md = render_vocab_entry(data, date_format=config.date_format)
-                store.overwrite_entry(normalized, entry_md)
-                console.print(f'[green]✅ Overwritten entry.[/green]')
-            else:
-                console.print(
-                    f"[red]Error: Invalid duplicate_policy '{config.duplicate_policy}'. "
-                    f"Must be one of: skip, append_encounter, overwrite[/red]"
+            try:
+                action, _ = _handle_duplicate_policy(
+                    store, client, config, cleaned, normalized,
+                    date_format=config.date_format,
                 )
+                console.print(f'[yellow]\u26a0\ufe0f  "{cleaned}" already exists. {action}[/yellow]')
+            except ValueError as e:
+                console.print(f"[red]Error: {e}[/red]")
                 raise typer.Exit(1)
         else:
             console.print("[dim]Looking up...[/dim]")
@@ -290,18 +285,27 @@ def lookup(
             result_table.add_row("Part of Speech", data["part_of_speech"])
         if data.get("chinese_meaning"):
             result_table.add_row("Chinese", data["chinese_meaning"])
-        if data.get("english_explanation"):
-            result_table.add_row("English", data["english_explanation"])
+        if data.get("core_meaning"):
+            result_table.add_row("Core Meaning", data["core_meaning"])
         if data.get("collocations"):
             result_table.add_row("Collocations", "\n".join(f"  - {c}" for c in data["collocations"]))
         if data.get("example_sentences"):
-            result_table.add_row("Examples", "\n".join(f"  - {e}" for e in data["example_sentences"]))
-        if data.get("etymology_or_memory_tip"):
-            result_table.add_row("Memory Tip", data["etymology_or_memory_tip"])
-        if data.get("usage_note"):
-            result_table.add_row("Usage", data["usage_note"])
-        if data.get("confusable_words"):
-            result_table.add_row("Confusable", "\n".join(f"  - {c}" for c in data["confusable_words"]))
+            ex_lines = []
+            for ex in data["example_sentences"]:
+                en = ex.get("en", "") if isinstance(ex, dict) else str(ex)
+                zh = ex.get("zh", "") if isinstance(ex, dict) else ""
+                if en and zh:
+                    ex_lines.append(f"  - {en} ({zh})")
+                elif en:
+                    ex_lines.append(f"  - {en}")
+            result_table.add_row("Examples", "\n".join(ex_lines))
+        if data.get("memory_hook"):
+            result_table.add_row("Memory Hook", data["memory_hook"])
+        if data.get("usage_notes"):
+            result_table.add_row("Usage", data["usage_notes"])
+        if data.get("similar_words"):
+            sim_lines = [f"  - {s.get('word', '')}: {s.get('difference', '')}" for s in data["similar_words"]]
+            result_table.add_row("Similar Words", "\n".join(sim_lines))
 
         console.print(result_table)
         console.print("[dim](Not written to vocabulary file)[/dim]")
@@ -357,32 +361,24 @@ def batch(
 
             try:
                 if store.word_exists(normalized):
-                    if config.duplicate_policy == "skip":
-                        console.print(f"  [dim]⏭️  Already exists, skipping.[/dim]")
-                        skipped += 1
-                        continue
-                    elif config.duplicate_policy == "append_encounter":
-                        encounter_md = render_encounter_entry(
-                            date_format=config.date_format)
-                        store.append_encounter(normalized, encounter_md)
-                        console.print(f"  [yellow]📝 Already exists, added encounter record.[/yellow]")
-                        encounters += 1
-                        continue
-                    elif config.duplicate_policy == "overwrite":
-                        data = client.lookup(word)
-                        entry_md = render_vocab_entry(data,
-                                                      date_format=config.date_format)
-                        store.overwrite_entry(normalized, entry_md)
-                        console.print(f"  [green]✅ Overwritten.[/green]")
-                        added += 1
-                        continue
-                    else:
-                        console.print(
-                            f"  [red]❌ Invalid duplicate_policy "
-                            f"'{config.duplicate_policy}'[/red]"
+                    try:
+                        action, handled = _handle_duplicate_policy(
+                            store, client, config, word, normalized,
+                            date_format=config.date_format,
                         )
+                        if config.duplicate_policy == "skip":
+                            console.print(f"  [dim]\u23ed\ufe0f  {action}[/dim]")
+                            skipped += 1
+                        elif config.duplicate_policy == "overwrite":
+                            console.print(f"  [green]\u2705 {action}[/green]")
+                            added += 1
+                        elif config.duplicate_policy == "append_encounter":
+                            console.print(f"  [yellow]\ud83d\udcdd {action}[/yellow]")
+                            encounters += 1
+                    except ValueError as e:
+                        console.print(f"  [red]Error: {e}[/red]")
                         errors += 1
-                        continue
+                    continue
 
                 data = client.lookup(word)
                 entry_md = render_vocab_entry(data, date_format=config.date_format)
@@ -414,7 +410,7 @@ def export_anki(
     config = load_config()
 
     if output is None:
-        output = config.expanded_vault_path / "English" / "vocabulary_anki.csv"
+        output = config.expanded_vocab_file.parent / "vocabulary_anki.csv"
 
     vocab_path = config.expanded_vocab_file
 

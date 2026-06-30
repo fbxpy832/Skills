@@ -53,8 +53,8 @@ obsidian-vocab-capture add "abandon"
 
 This will:
 1. Call the AI to look up "abandon"
-2. Generate a structured Markdown entry
-3. Append it to `~/Documents/RichardHub/English/Vocabulary.md`
+2. Generate a structured Markdown entry (unified SKILL.md-compatible format)
+3. Append it to the vocabulary file under the `阅读学习/` directory
 
 ### 3. Set Up Quick Capture
 
@@ -93,7 +93,7 @@ obsidian-vocab-capture batch words.txt
 ### `export-anki` - Export to Anki CSV
 ```bash
 obsidian-vocab-capture export-anki
-# Output: ~/Documents/RichardHub/English/vocabulary_anki.csv
+# Output: vocabulary_anki.csv (same directory as vocabulary file)
 ```
 
 ### `config` - Manage configuration
@@ -109,24 +109,38 @@ Each word creates a structured entry in Vocabulary.md:
 ```markdown
 ## abandon
 
-- 音标：/əˈbændən/
-- 词性：verb
-- 中文释义：放弃；抛弃
-- 英文解释：to leave behind or give up completely
-- 常见搭配：
-  - abandon hope
-  - abandon ship
-  - abandon oneself to
-- 例句：
-  - He abandoned the project after months of hard work.
-  - The crew had to abandon the sinking ship.
-- 词根/记忆：from Old French abandoner "to surrender"
-- 使用场景：formal and informal; can describe physical or emotional relinquishment
-- 易混词：
-  - abundant (充足的)
-  - abdomen (腹部)
-- 添加时间：2026-05-07
-- 来源：manual-capture
+- Date: 2026-05-07
+- Part of Speech: verb
+- Core Meaning: to leave behind or give up completely
+- Chinese Meaning: 放弃；抛弃
+- Phonetic: /əˈbændən/
+- Memory Hook: from Old French abandoner "to surrender"
+- Usage Frequency: high
+
+### Simple Explanation
+When you abandon something, you leave it and never come back.
+
+### Example Sentences
+1. He abandoned the project after months of hard work.  
+   他花了几个月后放弃了这个项目。
+2. The crew had to abandon the sinking ship.  
+   船员们不得不弃船。
+
+### Common Collocations
+- abandon hope
+- abandon ship
+
+### Similar Words
+- abundant (充足的): 完全不同的词
+- abdomen (腹部): 拼写相似但意思不同
+
+### Usage Notes
+Formal and informal contexts. Can describe physical or emotional relinquishment.
+
+### My Context
+Used in project management when discussing dropping features or pivoting.
+
+---
 ```
 
 ## Duplicate Handling
@@ -163,9 +177,9 @@ Compatible with any OpenAI-compatible API:
 | `VOCAB_AI_MODEL` | `ai.model` | Model name |
 | `VOCAB_VAULT_PATH` | `vault_path` | Obsidian vault path |
 | `VOCAB_VOCAB_FILE` | `vocab_file` | Vocabulary file path |
-| `VOCAB_LANGUAGE` | `language` | Response language (zh-CN, en, etc.) |
+| `VOCAB_LANGUAGE` | `language` | Response language |
 | `VOCAB_DUPLICATE_POLICY` | `duplicate_policy` | skip / append_encounter / overwrite |
-| `VOCAB_DATE_FORMAT` | `date_format` | Date format |
+| `VOCAB_DATE_FORMAT` | `date_format` | Date format (strftime) |
 
 Config file location: `~/.config/obsidian-vocab-capture/config.json`
 

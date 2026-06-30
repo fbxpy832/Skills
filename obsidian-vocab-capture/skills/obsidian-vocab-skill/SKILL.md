@@ -27,7 +27,7 @@ Use this skill when the user asks to:
 
 ## Vocabulary File Path
 
-Default: `~/Documents/RichardHub/English/Vocabulary.md`
+Default: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub/阅读学习/Vocabulary.md`
 
 The path can be changed via:
 - Environment variable: `VOCAB_VOCAB_FILE`
@@ -102,7 +102,7 @@ Optional features to support:
 Supports generating review plans based on forgetting curve:
 - Day 1, Day 3, Day 7, Day 15, Day 30
 
-Review files go to: `~/Documents/RichardHub/English/Review/YYYY-MM-DD.md`
+Review files go to: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/RichardHub/阅读学习/Review/YYYY-MM-DD.md`
 
 ## Obsidian Integration
 

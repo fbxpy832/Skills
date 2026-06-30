@@ -35,9 +35,22 @@ class MarkdownStore:
             )
             logger.info(f"Created vocabulary file: {self.vocab_path}")
 
+    MAX_BACKUPS = 5
+
     def backup(self) -> Optional[Path]:
-        """Create a backup of the vocabulary file."""
-        return backup_file(self.vocab_path)
+        """Create a backup of the vocabulary file and prune old ones."""
+        result = backup_file(self.vocab_path)
+        self._prune_backups()
+        return result
+
+    def _prune_backups(self) -> None:
+        """Remove excess backup files, keeping only the most recent MAX_BACKUPS."""
+        pattern = self.vocab_path.name + ".bak-*"
+        backups = sorted(self.vocab_path.parent.glob(pattern))
+        while len(backups) > self.MAX_BACKUPS:
+            oldest = backups.pop(0)
+            oldest.unlink()
+            logger.info(f"Pruned old backup: {oldest}")
 
     def read_file(self) -> str:
         """Read the entire vocabulary file."""

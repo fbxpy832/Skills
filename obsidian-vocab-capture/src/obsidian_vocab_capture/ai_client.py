@@ -25,24 +25,25 @@ VOCAB_PROMPT_TEMPLATE = """你是一个面向中文母语用户的英语词汇�
   "word": "",
   "phonetic": "",
   "part_of_speech": "",
+  "core_meaning": "",
   "chinese_meaning": "",
-  "english_explanation": "",
+  "memory_hook": "",
+  "usage_frequency": "",
+  "simple_explanation": "",
+  "example_sentences": [{"en": "", "zh": ""}],
+  "similar_words": [{"word": "", "difference": ""}],
   "collocations": [],
-  "example_sentences": [],
-  "etymology_or_memory_tip": "",
-  "usage_note": "",
-  "confusable_words": []
+  "usage_notes": "",
+  "my_context": ""
 }}
 
 要求：
 - 中文释义要准确，不要过度展开；
-- 英文解释要适合中高级英语学习者；
+- Core Meaning 用英文简洁核心定义，适合中高级英语学习者；
+- Simple Explanation 用更简单的英文解释；
 - 例句要自然、实用；
-- 如果是短语，不要强行给词根；
-- collocations 给 3 到 6 个；
-- example_sentences 给 2 到 3 个；
-- confusable_words 可以为空数组；
-- phonetic 如果无法确定，可以为空字符串；
+- example_sentences 每条包含 en(英文) 和 zh(中文)；
+- similar_words 每条包含 word(易混词) 和 difference(区别说明)；
 - 只返回 JSON。"""
 
 CONTEXT_BLOCK = """
@@ -150,16 +151,18 @@ class AIClient:
     def _validate_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
         """Validate and normalize the result structure."""
         required_keys = [
-            "word", "phonetic", "part_of_speech", "chinese_meaning",
-            "english_explanation", "collocations", "example_sentences",
-            "etymology_or_memory_tip", "usage_note", "confusable_words",
+            "word", "phonetic", "part_of_speech", "core_meaning",
+            "chinese_meaning", "memory_hook", "usage_frequency",
+            "simple_explanation", "example_sentences",
+            "similar_words", "collocations", "usage_notes", "my_context",
         ]
         for key in required_keys:
+            is_list = key in ("collocations", "example_sentences", "similar_words")
             if key not in result:
-                result[key] = "" if key not in ("collocations", "example_sentences", "confusable_words") else []
+                result[key] = [] if is_list else ""
 
         # Ensure lists are lists
-        for list_key in ("collocations", "example_sentences", "confusable_words"):
+        for list_key in ("collocations", "example_sentences", "similar_words"):
             if not isinstance(result.get(list_key), list):
                 result[list_key] = [result[list_key]] if result[list_key] else []
 

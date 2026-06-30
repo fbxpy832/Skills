@@ -1,13 +1,16 @@
-"""Render AI response JSON into Obsidian-compatible Markdown."""
+"""Render AI response JSON into Obsidian-compatible Markdown.
+
+Unified format compatible with SKILL.md agent output.
+"""
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 def render_vocab_entry(data: Dict[str, Any], date_str: Optional[str] = None,
                        context: Optional[str] = None,
                        date_format: str = "%Y-%m-%d") -> str:
-    """Render a vocabulary entry as Markdown.
+    """Render a vocabulary entry as Markdown in unified SKILL.md-compatible format.
 
     Args:
         data: The AI response JSON.
@@ -24,57 +27,92 @@ def render_vocab_entry(data: Dict[str, Any], date_str: Optional[str] = None,
     word = data.get("word", "")
     phonetic = data.get("phonetic", "")
     pos = data.get("part_of_speech", "")
+    core = data.get("core_meaning", "")
     chinese = data.get("chinese_meaning", "")
-    english = data.get("english_explanation", "")
-    collocations = data.get("collocations", [])
+    memory = data.get("memory_hook", "")
+    freq = data.get("usage_frequency", "")
+    simple = data.get("simple_explanation", "")
     examples = data.get("example_sentences", [])
-    etymology = data.get("etymology_or_memory_tip", "")
-    usage = data.get("usage_note", "")
-    confusable = data.get("confusable_words", [])
+    similar = data.get("similar_words", [])
+    collocations = data.get("collocations", [])
+    usage_notes = data.get("usage_notes", "")
+    my_context = data.get("my_context", "")
 
     lines = [f"## {word}", ""]
 
-    if phonetic:
-        lines.append(f"- 音标：{phonetic}")
+    # Metadata fields
+    lines.append(f"- Date: {date_str}")
     if pos:
-        lines.append(f"- 词性：{pos}")
+        lines.append(f"- Part of Speech: {pos}")
+    if core:
+        lines.append(f"- Core Meaning: {core}")
     if chinese:
-        lines.append(f"- 中文释义：{chinese}")
-    if english:
-        lines.append(f"- 英文解释：{english}")
+        lines.append(f"- Chinese Meaning: {chinese}")
+    if phonetic:
+        lines.append(f"- Phonetic: {phonetic}")
+    if memory:
+        lines.append(f"- Memory Hook: {memory}")
+    if freq:
+        lines.append(f"- Usage Frequency: {freq}")
 
-    # Context
+    # Context (from CLI --context param)
     if context:
-        lines.append(f"- 语境：{context}")
+        lines.append(f"- Context: {context}")
 
-    # Collocations
-    if collocations:
-        lines.append("- 常见搭配：")
-        for c in collocations:
-            lines.append(f"  - {c}")
+    lines.append("")
 
-    # Example sentences
+    # Simple Explanation
+    if simple:
+        lines.append("### Simple Explanation")
+        lines.append(simple)
+        lines.append("")
+
+    # Example Sentences
     if examples:
-        lines.append("- 例句：")
-        for ex in examples:
-            lines.append(f"  - {ex}")
+        lines.append("### Example Sentences")
+        for i, ex in enumerate(examples, 1):
+            en = ex.get("en", "") if isinstance(ex, dict) else str(ex)
+            zh = ex.get("zh", "") if isinstance(ex, dict) else ""
+            if en and zh:
+                lines.append(f"{i}. {en}")
+                lines.append(f"   {zh}")
+            elif en:
+                lines.append(f"{i}. {en}")
+        lines.append("")
 
-    # Etymology / memory tip
-    if etymology:
-        lines.append(f"- 词根/记忆：{etymology}")
+    # Common Collocations
+    if collocations:
+        lines.append("### Common Collocations")
+        for c in collocations:
+            lines.append(f"- {c}")
+        lines.append("")
 
-    # Usage note
-    if usage:
-        lines.append(f"- 使用场景：{usage}")
+    # Similar Words
+    if similar:
+        lines.append("### Similar Words")
+        for sw in similar:
+            sw_word = sw.get("word", "") if isinstance(sw, dict) else str(sw)
+            sw_diff = sw.get("difference", "") if isinstance(sw, dict) else ""
+            if sw_word and sw_diff:
+                lines.append(f"- {sw_word}: {sw_diff}")
+            elif sw_word:
+                lines.append(f"- {sw_word}")
+        lines.append("")
 
-    # Confusable words
-    if confusable:
-        lines.append("- 易混词：")
-        for cw in confusable:
-            lines.append(f"  - {cw}")
+    # Usage Notes
+    if usage_notes:
+        lines.append("### Usage Notes")
+        lines.append(usage_notes)
+        lines.append("")
 
-    lines.append(f"- 添加时间：{date_str}")
-    lines.append("- 来源：manual-capture")
+    # My Context
+    if my_context:
+        lines.append("### My Context")
+        lines.append(my_context)
+        lines.append("")
+
+    # Separator
+    lines.append("---")
     lines.append("")
 
     return "\n".join(lines)
@@ -83,13 +121,14 @@ def render_vocab_entry(data: Dict[str, Any], date_str: Optional[str] = None,
 def render_encounter_entry(date_str: Optional[str] = None,
                            context: Optional[str] = None,
                            date_format: str = "%Y-%m-%d") -> str:
+    """Render an encounter record for an existing word entry."""
     if date_str is None:
         date_str = datetime.now().strftime(date_format)
 
-    lines = ["### 再次遇到", ""]
+    lines = ["### Encounter", ""]
     if context:
-        lines.append(f"- {date_str}：再次遇到该词。上下文：{context}")
+        lines.append(f"- {date_str}: Encountered again. Context: {context}")
     else:
-        lines.append(f"- {date_str}：再次遇到该词。")
+        lines.append(f"- {date_str}: Encountered again.")
     lines.append("")
     return "\n".join(lines)
