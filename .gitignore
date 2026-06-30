@@ -7,6 +7,7 @@ entities.json
 
 .DS_Store
 .codepilot-uploads/
+tokendashboard/
 __pycache__/
 *.py[cod]
 *.egg-info/
