@@ -1,0 +1,4 @@
+interface:
+  display_name: "Desktop Document Archiver"
+  short_description: "Archive Desktop files and import Word notes"
+  default_prompt: "Use $desktop-document-archiver to scan, archive, and import my Desktop documents."
