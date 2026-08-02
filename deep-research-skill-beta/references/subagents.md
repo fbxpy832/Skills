@@ -29,8 +29,7 @@ Subagent 可以是真实并发代理，也可以是主 Agent 按顺序模拟的�
 
 推荐模型：
 
-- 默认：DeepSeek V4 Pro。
-- 简单任务：DeepSeek V4 Flash。
+- 默认：DeepSeek V4 Flash（当前临时策略，全部 DeepSeek 角色统一）。
 
 输出格式：
 
@@ -57,12 +56,10 @@ required_subagents:
 - 标注数据获取时间。
 - 识别过期数据和低质量来源。
 - 不做最终判断。
-- 调用知识库检索（knowledge-retrieval.sh）获取内部资料。
 
 推荐模型：
 
 - 默认：DeepSeek V4 Flash。
-- 复杂政策、监管、上市公司公告：DeepSeek V4 Pro。
 
 输出格式：
 
@@ -75,8 +72,6 @@ retrieval_date:
 extracted_facts:
 reliability_notes:
 citation_ready_text:
-knowledge_sources_used: []    # 使用的知识库来源列表（lark_wiki/notebooklm/obsidian）
-knowledge_search_status:      # 知识库检索状态：success / partial_success / failed
 ```
 
 ## long_context_agent
@@ -91,8 +86,7 @@ knowledge_search_status:      # 知识库检索状态：success / partial_succes
 
 推荐模型：
 
-- 默认：Kimi 2.6。
-- Kimi 不可用时：DeepSeek V4 Pro。
+- 默认：DeepSeek V4 Flash（与全部 DeepSeek 角色统一）。
 
 输出格式：
 
@@ -119,8 +113,7 @@ suggested_rewrite_direction:
 
 推荐模型：
 
-- 默认：DeepSeek V4 Pro。
-- 禁止默认使用 Flash，除非任务很简单。
+- 默认：DeepSeek V4 Flash（当前临时策略）。
 
 输出格式：
 
@@ -144,8 +137,7 @@ decision_implication:
 
 推荐模型：
 
-- 默认：DeepSeek V4 Pro。
-- 简单表格整理：DeepSeek V4 Flash。
+- 默认：DeepSeek V4 Flash。
 
 输出格式：
 
@@ -176,8 +168,7 @@ cannot_calculate_items:
 
 推荐模型：
 
-- 默认：DeepSeek V4 Pro。
-- 快速初稿：DeepSeek V4 Flash。
+- 默认：DeepSeek V4 Flash。
 
 输出格式：
 
@@ -217,8 +208,8 @@ required_source_verification:
 
 推荐模型：
 
-- 默认：DeepSeek V4 Pro。
-- 禁止使用 Flash 作为最终审计模型。
+- 默认：DeepSeek V4 Flash（当前临时策略）。
+- 由于当前审计也使用 Flash，结论必须保留人工复核项。
 
 输出格式：
 

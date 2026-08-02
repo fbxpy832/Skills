@@ -32,7 +32,7 @@ source_types:
 
   local_vault:
     description: "本地 Obsidian Vault / RichardHub 资料：公司历史报告、项目方案、用户笔记、会议纪要、技术调研、业务材料"
-    path: "${DEEP_RESEARCH_OBSIDIAN_VAULT_DIR:-${DEEP_RESEARCH_VAULT_DIR:-<configure-your-local-vault-dir>}}"
+    path: "${DEEP_RESEARCH_VAULT_DIR:-<configure-your-local-vault-dir>}"
     allowed_for_core_claims: conditional
     conditions:
       - "标注'内部口径，需以财务或系统后台核验为准'"
@@ -44,7 +44,6 @@ source_types:
   local_wiki:
     description: "本地 llm-wiki / karpathy wiki 技术知识库：AI、LLM、深度学习、Agent、Transformer、端侧AI等通用技术原理"
     paths:
-      - "${DEEP_RESEARCH_OBSIDIAN_VAULT_DIR}/llm-wiki"
       - "~/Documents/karpathy-wiki"
       - "~/Documents/llm-wiki"
       - "<your-workspace>/karpathy-wiki"
@@ -74,27 +73,6 @@ source_types:
       - "必须与事实来源分开标注"
       - "涉及关键决策时必须说明假设条件和置信度"
     note: "分析工具，非事实依据"
-
-  lark_wiki:
-    description: "飞书知识库文档：公司内部知识空间、项目文档、技术文档、管理制度、会议纪要、产品文档"
-    allowed_for_core_claims: conditional
-    conditions:
-      - "标注文档创建/更新时间，区分'当前有效'与'历史存档'"
-      - "内部文档不自动等同于外部权威事实"
-      - "涉及财务、合规、法律、立项等正式内容需核实是否为最终批准版本"
-      - "飞书 Wiki 中可能存在多个版本的同一文档，以最新版本为准"
-    default_level: "A/B"
-    note: "飞书知识库内部文档，需注意版本和时效性"
-
-  notebooklm:
-    description: "Google NotebookLM 笔记本：用户的 NotebookLM 笔记本中的 AI 分析回答和来源材料"
-    allowed_for_core_claims: conditional
-    conditions:
-      - "NotebookLM 的分析输出属于 AI 推理（model_reasoning），不是事实来源，必须标注'NotebookLM 生成'"
-      - "NotebookLM 中的来源材料（用户上传的文档）可视为 uploaded_files 级别"
-      - "AI 分析可能基于过时的 notebook 内容，不能代替最新外部核验"
-    default_level: "C"
-    note: "NotebookLM 内容含 AI 生成分析，需与原始来源区分"
 
 # ============================================================
 # 来源等级
@@ -188,22 +166,18 @@ task_source_priority:
   business_decision:
     priority_order:
       - uploaded_files
-      - external_authoritative
-      - lark_wiki
       - local_vault
+      - external_authoritative
       - external_media
-      - notebooklm
       - model_reasoning
-    note: "内部来源（lark_wiki、local_vault）只用于补充业务背景和项目上下文，核心外部事实（市场数据、竞品信息、政策法规）仍需外部权威来源核验。必须区分内部口径、外部公开事实、AI 推理判断、待核验数据"
+    note: "必须区分内部口径、外部公开事实、AI 推理判断、待核验数据"
 
   government_report:
     priority_order:
       - external_authoritative
-      - lark_wiki
       - local_vault
       - uploaded_files
       - external_media
-      - notebooklm
       - model_reasoning
     note: "优先使用政府文件、政策法规、主管部门公开信息"
     forbidden:
@@ -213,24 +187,27 @@ task_source_priority:
 
   technical_route:
     priority_order:
-      - external_authoritative
       - local_wiki
+      - external_authoritative
       - external_media
       - uploaded_files
-      - lark_wiki
       - local_vault
-      - notebooklm
       - model_reasoning
-    note: "local_wiki 只用于技术原理解释和术语理解，不支撑最新产业状态、论文进展、产品状态。最新论文和产品进展必须通过外部权威来源核验（IEEE Xplore、arXiv、ACM、公司官网等）"
+    note: "local_wiki 用于技术原理，不用于最新事实判断。最新论文和产品进展必须通过外部来源核验"
+    required_sources:
+      - "IEEE Xplore"
+      - "arXiv"
+      - "ACM Digital Library"
+      - "ISSCC/IEDM/Hot Chips"
+      - "公司官网"
+      - "专利数据库"
 
   investment_analysis:
     priority_order:
       - external_authoritative
       - external_media
       - uploaded_files
-      - lark_wiki
       - local_vault
-      - notebooklm
       - model_reasoning
     note: "必须优先使用交易所公告、年报、季报、招股书、监管问询函"
     forbidden:
@@ -244,9 +221,6 @@ task_source_priority:
       - external_authoritative
       - local_wiki
       - external_media
-      - lark_wiki
-      - local_vault
-      - notebooklm
       - model_reasoning
     note: "解释概念时可结合 local_wiki；涉及当前状态和最新发展时必须外部核验"
 

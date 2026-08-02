@@ -7,8 +7,7 @@
 当前默认环境（macOS Darwin + 中国大陆网络）中：
 
 - **Brave Search API** — ✅ 通过系统代理可用，API 返回结构化 JSON，中英文搜索质量均好。通过 `scripts/search.sh` 统一调用。
-- **博查 AI Search API** — ✅ **中文搜索引擎之一**。国内原生 AI 搜索 API，无需代理，中文搜索质量业界最佳。详见 [references/search-backends/bocha.md](references/search-backends/bocha.md)。
-- **百度智能云搜索** — ✅ **中文主力搜索引擎**。国内直连 OAuth2 API，无需代理，中文搜索质量高。详见 [references/search-backends/baidu.md](references/search-backends/baidu.md)。
+- **博查 AI Search API** — ✅ **中文主力搜索引擎**。国内原生 AI 搜索 API，无需代理，中文搜索质量业界最佳。详见 [references/search-backends/bocha.md](references/search-backends/bocha.md)。
 - **Bing CN** — ✅ 替代方案。`webfetch(markdown)` 可用，英文搜索质量好，但中文搜索质量极差。
 - **Google** — ❌ 不可达。DNS 被污染 + 反爬双重封锁；即使通过代理，反爬仍拒绝所有自动化请求。
 - **Baidu** — ❌ HTTP 可达但触发反爬验证，无法获取搜索结果。
@@ -19,8 +18,7 @@
 
 | 搜索引擎 | webfetch | bash curl | 中文质量 | 英文质量 | 优先级 |
 |---------|:-------:|:---------:|:-------:|:-------:|:-----:|
-| **百度智能云搜索** | ❌ | ✅ 直连 | ✅ 最好 | ⚪ 有限 | **1（中文）** |
-| **博查 AI Search** | ❌ | ✅ 直连（国内服务） | ✅ 最好 | ⚠️ 可用 | **2（中文）** |
+| **博查 AI Search** | ❌ | ✅ 直连（国内服务） | ✅ 最好 | ⚠️ 可用 | **1（中文）** |
 | **Exa 语义搜索** | ❌ | ✅ 直连 | ⚠️ 有限 | ✅ 最好（语义） | **1（英文）** |
 | **Brave Search API** | ❌ 不支持自定义 Header | ✅ 通过代理 | ✅ 好 | ✅ 好 | **2** |
 | Bing CN | ✅ markdown 格式 | ✅ | ⚠️ 很差 | ✅ 好 | 3 |
@@ -31,10 +29,10 @@
 
 ## 并发搜索（--parallel）
 
-`search.sh --parallel` 模式下，中文查询并发运行百度 + 博查，英文查询并发运行 Exa + Brave。结果合并输出，任一引擎失败不影响另一引擎。
+`search.sh --parallel` 模式下，中文查询并发运行博查+Brave，英文查询并发运行 Exa+Brave。结果合并输出，任一引擎失败不影响另一引擎。
 
 ```
-scripts/search.sh "人工智能 2026" --parallel  # 百度 + Bocha 并发
+scripts/search.sh "人工智能 2026" --parallel  # Bocha + Brave 并发
 scripts/search.sh "LLM research" --parallel   # Exa + Brave 并发
 ```
 
@@ -151,7 +149,7 @@ scripts/search.sh "查询关键词"
 scripts/search.sh "查询关键词" --parallel
 ```
 
-- 中文优先：百度智能云 → Bocha → Brave → Exa。
+- 中文优先：Bocha → Brave → Exa。
 - 英文优先：Exa → Brave → Bocha。
 - 只有用户显式指定 `--backend brave` 时，才强制 Brave。
 

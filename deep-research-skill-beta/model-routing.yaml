@@ -1,51 +1,19 @@
-# ============================================================================
-# 模型路由参考文档
-# ============================================================================
-# 注意：本文件是模型路由策略的参考文档，实际路由逻辑在 scripts/model-router.sh
-# 中实现。修改模型分配时请同时更新 model-router.sh 和本文件以保持同步。
-# 用户级配置通过 scripts/setup.sh 写入 ~/.config/deep-research-skill/config.env，
-# 运行时 model-router.sh 优先读取 config.env，未配置时使用内置默认值。
-# ============================================================================
-
 available_models:
-  # Defaults are intentionally provider-neutral enough to run in an OpenCode
-  # token-plan environment. For company rollout, run scripts/setup.sh and let
-  # each user bind these logical routes to their own provider, endpoint, and key.
-  deepseek_v4_pro:
-    model_id: opencode-go/deepseek-v4-pro
-    role: reasoning_and_final_analysis
-    strengths:
-      - complex_reasoning
-      - business_decision
-      - compliance_analysis
-      - final_review
-      - technical_route_selection
-      - investment_analysis
-      - final_report_writing
-    cost_level: medium_high
-
+  # Temporary policy: all DeepSeek roles use DeepSeek official V4 Flash.
+  # The previous OpenCode Go token-plan models are intentionally removed.
   deepseek_v4_flash:
-    model_id: opencode-go/deepseek-v4-flash
-    role: fast_search_and_draft
+    model_id: deepseek/deepseek-v4-flash
+    role: all_deepseek_agents_temporary_flash
     strengths:
       - fast_drafting
       - source_collection
       - low_cost_iteration
       - rough_outline
       - search_result整理
+      - reasoning_and_final_analysis
+      - final_review
+      - final_report_writing
     cost_level: low
-
-  kimi_2_6:
-    model_id: opencode-go/kimi-k2.6
-    role: long_context_reading
-    strengths:
-      - long_document_reading
-      - multi_file_summarization
-      - policy_document_extraction
-      - contract_and_tender_reading
-      - financial_report_extraction
-      - technical_document_extraction
-    cost_level: medium
 
 default_mode: balanced
 
@@ -55,16 +23,10 @@ local_override:
   opencode_provider_install_command: scripts/install-opencode-providers.sh
   priority: local_config_over_builtin_defaults
   supported_provider_examples:
-    - opencode_token_plan
     - deepseek_openai_compatible
-    - moonshot_kimi_openai_compatible
-    - openai
-    - openrouter
-    - siliconflow
     - custom_openai_compatible
   supported_credentials:
     - api_key
-    - token_plan_key
   credential_storage:
     local_private_env_file: ~/.config/deep-research-skill/config.env
     opencode_config: provider_metadata_only_no_api_keys
@@ -79,52 +41,51 @@ local_override:
 
 mode_profiles:
   balanced:
-    planner_agent: deepseek_v4_pro
+    planner_agent: deepseek_v4_flash
     source_agent: deepseek_v4_flash
-    long_context_agent: kimi_2_6
-    analyst_agent: deepseek_v4_pro
-    scenario_agent: deepseek_v4_pro
-    writer_agent: deepseek_v4_pro
-    reviewer_agent: deepseek_v4_pro
+    long_context_agent: deepseek_v4_flash
+    analyst_agent: deepseek_v4_flash
+    scenario_agent: deepseek_v4_flash
+    writer_agent: deepseek_v4_flash
+    reviewer_agent: deepseek_v4_flash
 
   cost_saving:
     planner_agent: deepseek_v4_flash
     source_agent: deepseek_v4_flash
-    long_context_agent: kimi_2_6
+    long_context_agent: deepseek_v4_flash
     analyst_agent: deepseek_v4_flash
     scenario_agent: deepseek_v4_flash
     writer_agent: deepseek_v4_flash
-    reviewer_agent: deepseek_v4_pro
+    reviewer_agent: deepseek_v4_flash
     notes:
-      - analyst_agent must escalate complex paragraphs to deepseek_v4_pro.
-      - final review must still use deepseek_v4_pro.
+      - Temporary policy: DeepSeek agents use V4 Flash official.
 
   high_quality:
-    planner_agent: deepseek_v4_pro
+    planner_agent: deepseek_v4_flash
     source_agent: deepseek_v4_flash
-    long_context_agent: kimi_2_6
-    analyst_agent: deepseek_v4_pro
-    scenario_agent: deepseek_v4_pro
-    writer_agent: deepseek_v4_pro
-    reviewer_agent: deepseek_v4_pro
+    long_context_agent: deepseek_v4_flash
+    analyst_agent: deepseek_v4_flash
+    scenario_agent: deepseek_v4_flash
+    writer_agent: deepseek_v4_flash
+    reviewer_agent: deepseek_v4_flash
 
   long_context:
-    planner_agent: deepseek_v4_pro
+    planner_agent: deepseek_v4_flash
     source_agent: deepseek_v4_flash
-    long_context_agent: kimi_2_6
-    analyst_agent: deepseek_v4_pro
-    scenario_agent: deepseek_v4_pro
-    writer_agent: deepseek_v4_pro
-    reviewer_agent: deepseek_v4_pro
+    long_context_agent: deepseek_v4_flash
+    analyst_agent: deepseek_v4_flash
+    scenario_agent: deepseek_v4_flash
+    writer_agent: deepseek_v4_flash
+    reviewer_agent: deepseek_v4_flash
 
   draft_fast:
     planner_agent: deepseek_v4_flash
     source_agent: deepseek_v4_flash
-    long_context_agent: kimi_2_6
+    long_context_agent: deepseek_v4_flash
     analyst_agent: deepseek_v4_flash
     scenario_agent: deepseek_v4_flash
     writer_agent: deepseek_v4_flash
-    reviewer_agent: deepseek_v4_pro
+    reviewer_agent: deepseek_v4_flash
     notes:
       - Use only when the user wants a fast draft or rough framework.
       - Mark lower source strictness if the user does not require formal citation.
@@ -182,7 +143,7 @@ mode_keywords:
     - 后续人工修改
 
 escalation_rules:
-  must_use_deepseek_v4_pro:
+  must_use_deepseek_v4_flash_or_manual_review:
     - compliance_or_law
     - funds_payment_tax_or_second_clearing
     - company_project_approval_or_budget
@@ -195,14 +156,9 @@ escalation_rules:
     - user_requests_serious_or_leadership_use
 
 fallback_rules:
-  kimi_2_6_unavailable:
-    action: use_deepseek_v4_pro_for_long_context
-  deepseek_v4_pro_unavailable:
-    action: use_kimi_2_6_or_deepseek_v4_flash_for_draft_only
-    required_notice: 本次未使用 Pro 级审计模型，结论需人工复核。
   deepseek_v4_flash_unavailable:
-    action: use_deepseek_v4_pro_for_source_and_draft
-    required_notice: 资料搜索和初稿生成改用 Pro 模型，成本可能上升。
+    action: stop_and_request_manual_review
+    required_notice: DeepSeek V4 Flash 不可用时停止自动审计，转人工复核或重试。
   subagents_unavailable:
     action: sequential_single_agent_workflow
     required_notice: 本次未启用 Subagent 分工，采用单 Agent 模式完成。

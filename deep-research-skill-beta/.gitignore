@@ -5,4 +5,3 @@ config.env
 !*.env.example
 # OpenCode run artifacts
 .deep-research-runs/
-.worktrees/
